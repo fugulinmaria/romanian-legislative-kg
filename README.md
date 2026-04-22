@@ -338,7 +338,6 @@ ruff check --fix .
 - Knowledge base persists between runs in `output/`
 - Vector store enables semantic search
 - Generated visualizations saved to `output/` directory
-- Old YAGO code archived in `main_old_yago.py` and `lege_old.py`
 - Pre-commit hooks ensure code quality on every commit
 - See `TODO.md` for development roadmap and planned features
 - `.pre-commit-config.yaml` - Pre-commit hook setup
@@ -351,7 +350,6 @@ ruff check --fix .
 - Knowledge base persists between runs in `output/`
 - Vector store enables semantic search
 - Generated visualizations saved to `output/` directory
-- Old YAGO code archived in `main_old_yago.py` and `lege_old.py`
 
 ## ⚠️ Troubleshooting
 
@@ -385,6 +383,6 @@ This system addresses:
 - Requires Ollama with Romanian-capable LLM
 - Knowledge base persists between runs
 - Vector store enables semantic search
-- Old YAGO code archived in `main_old_yago.py` and `lege_old.py`
+
 
 
