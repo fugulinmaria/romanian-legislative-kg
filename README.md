@@ -35,7 +35,13 @@ Code/
 ├── .venv/                       # Virtual environment
 ├── main.py                      # Main analysis pipeline
 ├── requirements.txt             # Python dependencies
-└── main_old_yago.py            # Archived YAGO analysis
+│
+├── .gitignore                   # Git exclusions
+├── .pre-commit-config.yaml      # Pre-commit hooks
+├── pyproject.toml               # Ruff configuration
+├── LICENSE                      # MIT License
+├── TODO.md                      # Project roadmap
+└── README.md                    # This file
 ```
 
 ## 🚀 Quick Start
@@ -290,13 +296,21 @@ If you need to set up this project on a new machine:
    ```
 
 5. **Set up pre-commit hooks (optional but recommended):**
-   ```bash
-   pre-commit install
-   ```
+   ```bash with automated pre-commit hooks.
 
-## 🧹 Code Quality
+### Pre-commit Hooks (Recommended)
+Pre-commit hooks automatically format code before each commit:
 
-This project uses **ruff** for code formatting and linting.
+```bash
+# Install hooks (one-time setup, already done)
+pre-commit install
+
+# Run manually on all files
+pre-commit run --all-files
+
+# Bypass hooks (not recommended)
+git commit --no-verify
+```
 
 ### Manual Formatting
 ```bash
@@ -307,21 +321,26 @@ ruff format .
 ruff check --fix .
 ```
 
-### Pre-commit Hooks
-Pre-commit hooks automatically format code before each commit:
+### Configuration Files
+- **`.pre-commit-config.yaml`** - Pre-commit hook configuration (ruff v0.8.4)
+- **`pyproject.toml`** - Ruff linting/formatting rules (line length 100, double quotes)
+- **`.gitignore`** - Git exclusions (Python cache, venv, output files, vector DBs)
+� Repository
 
-```bash
-# Install hooks (one-time setup)
-pre-commit install
+- **GitHub:** [romanian-legislative-kg](https://github.com/fugulinmaria/romanian-legislative-kg)
+- **License:** MIT
+- **Version:** 2.0.0
 
-# Run manually on all files
-pre-commit run --all-files
+## 📝 Notes
 
-# Bypass hooks (not recommended)
-git commit --no-verify
-```
-
-Configuration files:
+- All configuration in `src/config.py`
+- Ollama must be running before executing the pipeline
+- Knowledge base persists between runs in `output/`
+- Vector store enables semantic search
+- Generated visualizations saved to `output/` directory
+- Old YAGO code archived in `main_old_yago.py` and `lege_old.py`
+- Pre-commit hooks ensure code quality on every commit
+- See `TODO.md` for development roadmap and planned features
 - `.pre-commit-config.yaml` - Pre-commit hook setup
 - `pyproject.toml` - Ruff configuration
 
