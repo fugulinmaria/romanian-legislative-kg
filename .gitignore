@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Project-specific outputs
+output/
+*.csv
+*.png
+
+# Vector databases
+chroma_local_db/
+legislative_knowledge_db/
+*.sqlite3
+
+# Ruff cache
+.ruff_cache/
+
+# Pre-commit
+.pre-commit-config.yaml.backup
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+
+# Keep output directory structure but ignore contents
+!output/.gitkeep
+!output/legislative_knowledge_db/.gitkeep
