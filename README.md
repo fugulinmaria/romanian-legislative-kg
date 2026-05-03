@@ -331,26 +331,6 @@ ruff check --fix .
 - **License:** MIT
 - **Version:** 2.0.0
 
-## 📝 Notes
-
-- All configuration in `src/config.py`
-- Ollama must be running before executing the pipeline
-- Knowledge base persists between runs in `output/`
-- Vector store enables semantic search
-- Generated visualizations saved to `output/` directory
-- Pre-commit hooks ensure code quality on every commit
-- See `TODO.md` for development roadmap and planned features
-- `.pre-commit-config.yaml` - Pre-commit hook setup
-- `pyproject.toml` - Ruff configuration
-
-## 📝 Notes
-
-- All configuration in `src/config.py`
-- Ollama must be running before executing the pipeline
-- Knowledge base persists between runs in `output/`
-- Vector store enables semantic search
-- Generated visualizations saved to `output/` directory
-
 ## ⚠️ Troubleshooting
 
 - **Vector-based semantic search** for finding similar legislation
