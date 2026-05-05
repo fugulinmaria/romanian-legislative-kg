@@ -1,368 +1,250 @@
-# Romanian Legislative Knowledge Graph Analysis
+# Graf de Cunoaștere Legislativă Românească
 
-A modular framework for generating, extracting, storing, and reasoning over Romanian legislative knowledge graphs using LLM-powered triple extraction and ontological validation.
+Un framework modular pentru extragerea, stocarea și raționamentul asupra
+grafurilor de cunoaștere construite din acte normative românești reale,
+folosind extragere de triple bazată pe LLM + regex și validare ontologică
+specifică domeniului legislativ.
 
-## 🎯 Project Overview
+## Prezentare generală
 
-This system focuses on Romanian legislative text analysis with:
-- **Synthetic law generation** - Create realistic Romanian legislative documents
-- **LLM-powered extraction** - Extract knowledge triples from legislative texts
-- **Knowledge base management** - Store and query legislative knowledge
-- **Ontological reasoning** - Validate legislative knowledge using domain-specific axioms
-- **Graph visualization** - Visualize relationships between laws and entities
+Sistemul procesează acte normative românești descărcate de pe
+[legislatie.just.ro](https://legislatie.just.ro) și le transformă într-un
+graf de cunoaștere interogabil semantic.
 
-## 📁 Project Structure
+Caracteristici principale:
+- **Corpus real** — 8 acte normative (legi, OUG, HG) stocate în `data/raw_laws/`
+- **Extragere hibridă** — regex deterministic pentru referințe legislative +
+  LLM (`gemma2:9b`) pentru relații semantice mai complexe
+- **Vocabular închis** — 16 relații canonice; relațiile inventate de LLM sunt
+  filtrate automat
+- **Normalizare text** — NFC, corecție diacritice, eliminare antet
+- **Segmentare articole** — algoritm LIS pentru filtrarea titlurilor de articole
+  citate în corpul altui articol
+- **Bază de cunoaștere vectorială** — ChromaDB cu embeddings `nomic-embed-text`
+- **Raționament ontologic** — verificare proprietăți funcționale, asimetrice,
+  ireflexive și constrângeri de domeniu
+
+---
+
+## Structura proiectului
 
 ```
 Code/
-├── src/                          # Core package modules
-│   ├── __init__.py              # Package initialization
-│   ├── config.py                # Legislative configuration
-│   ├── data_loader.py           # Triple data utilities
-│   ├── legislative_generator.py # Romanian law generation
-│   ├── graph_builder.py         # Graph construction
-│   ├── eda.py                   # Exploratory analysis
-│   ├── ontology.py              # Legislative reasoning
-│   ├── llm_handler.py           # LLM integration
-│   └── knowledge_base.py        # Knowledge management
+├── data/
+│   └── raw_laws/               # Acte normative reale (.txt + .meta.json)
+│       └── SOURCES.md          # Bibliografie completă a corpusului
 │
-├── output/                      # All generated files
-│   ├── legislative_triples.csv  # Extracted knowledge
-│   ├── legislative_corpus.csv   # Law texts
-│   ├── *.png                    # Visualizations
-│   └── legislative_knowledge_db/# Vector database
+├── scripts/
+│   ├── generate_meta.py        # Generare automată fișiere .meta.json
+│   └── validate_pipeline.py    # Validare metrici + ontologie (Phase G)
 │
-├── .venv/                       # Virtual environment
-├── main.py                      # Main analysis pipeline
-├── requirements.txt             # Python dependencies
+├── src/                        # Pachet Python principal
+│   ├── config.py               # Configurare modele și constante ontologie
+│   ├── text_normalizer.py      # NFC + diacritice + eliminare antet
+│   ├── law_loader.py           # Încărcare LawRecord = (law_id, text, meta)
+│   ├── article_splitter.py     # Segmentare articole (LIS anti-poluare)
+│   ├── relation_vocabulary.py  # 16 relații canonice + sinonime + prompt
+│   ├── cross_reference_extractor.py  # Regex pre-pass referințe legislative
+│   ├── llm_handler.py          # Prompt pipe-format + parser + vocab filter
+│   ├── knowledge_base.py       # Stocare/interogare triple + ChromaDB
+│   ├── graph_builder.py        # Construcție graf NetworkX
+│   ├── ontology.py             # Raționament ontologic (6 tipuri de axiome)
+│   ├── eda.py                  # Analiză exploratorie și vizualizări
+│   └── legislative_generator.py # Generator legi sintetice (fallback/test)
 │
-├── .gitignore                   # Git exclusions
-├── .pre-commit-config.yaml      # Pre-commit hooks
-├── pyproject.toml               # Ruff configuration
-├── LICENSE                      # MIT License
-├── TODO.md                      # Project roadmap
-└── README.md                    # This file
+├── output/                     # Fișiere generate (excluse din git)
+│   ├── legislative_triples.csv
+│   ├── legislative_corpus.csv
+│   ├── knowledge_base_export.csv
+│   └── legislative_knowledge_db/  # Baza vectorială ChromaDB
+│
+├── main.py                     # Pipeline principal
+├── requirements.txt
+├── pyproject.toml              # Configurare Ruff
+└── README.md
 ```
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
-✅ Already installed in this environment:
-- Python 3.14.0
-- Virtual environment (`.venv/`) with all dependencies:
-  - `langchain-ollama`, `langchain-chroma`, `chromadb`
-  - `pandas`, `matplotlib`, `networkx`
-- Ollama with required models:
-  - `gemma2:2b` (LLM for triple extraction)
-  - `nomic-embed-text` (embeddings model)
+## Pornire rapidă
 
-### Running the Application
+### Prerequisite
 
-1. **Activate the virtual environment:**
-   ```bash
-   source .venv/bin/activate
-   ```
+- Python 3.11+
+- [Ollama](https://ollama.ai) instalat și pornit (`ollama serve`)
+- Modelele descărcate:
+  ```bash
+  ollama pull gemma2:9b
+  ollama pull nomic-embed-text
+  ```
 
-2. **Ensure Ollama is running:**
-   ```bash
-   # Check if Ollama service is running
-   ollama list
-   
-   # If not running, start it:
-   # ollama serve
-   ```
+### Instalare
 
-3. **Run the main pipeline:**
-   ```bash
-   python3 main.py
-   ```
+```bash
+git clone <repo>
+cd Code
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-### What the Pipeline Does:
+### Rulare pipeline
 
-1. **Initialize** - Load LLM models, embeddings, and vector store
-2. **Generate** - Create diverse Romanian legislative texts
-3. **Extract** - Use LLM to extract knowledge triples
-4. **Build** - Construct knowledge graph from triples
-5. **Analyze** - Perform EDA and create visualizations
-6. **Reason** - Apply ontological validation rules
-7. **Query** - Demonstrate knowledge base queries
-7.5. **Semantic Search** - Find similar laws using vector embeddings
-8. **Save** - Persist knowledge base and vector store to disk
+```bash
+# Prima rulare — sau după ștergerea bazei vectoriale
+python3 main.py
 
-## 📦 Module Overview
+# Rulare rapidă (smoke test, primele 2 legi, 3 articole fiecare)
+# Editează main.py: MAX_LAWS=2, MAX_ARTICLES_PER_LAW=3
+python3 main.py
+```
 
-### `legislative_generator.py`
-Generates realistic Romanian legislative texts:
-- Simple laws
-- Complex laws with chapters
-- Amendment laws
-- Emergency ordinances
+### Validare rezultate
+
+```bash
+python3 scripts/validate_pipeline.py
+
+# Spot-check pe alte legi
+python3 scripts/validate_pipeline.py --laws lege_24_2000 oug_13_2026
+```
+
+---
+
+## Modulele principale
+
+### `src/text_normalizer.py`
+```python
+from src.text_normalizer import normalize_ro
+
+text = normalize_ro(raw_text)  # NFC + cedile → virgule + eliminare antet
+```
+
+### `src/law_loader.py`
+```python
+from src import load_real_laws
+
+laws = load_real_laws("data/raw_laws")
+# → [(law_id, normalized_text, metadata_dict), ...]
+```
+
+### `src/article_splitter.py`
+```python
+from src import split_into_articles
+
+articles = split_into_articles(text)
+# → [{"article_number": "1", "header": "Articolul 1", "text": "..."}, ...]
+```
+
+### `src/cross_reference_extractor.py`
+Pre-pas regex determinist — detectează citări de tipul
+`"modifică Legea nr. 53/2003"` fără a apela LLM-ul.
 
 ```python
-from src import RomanianLegislativeGenerator
+from src import extract_cross_references
 
-generator = RomanianLegislativeGenerator()
-law_text = generator.generate_complex_law(topic='digitalizarea administrativă')
+df = extract_cross_references(article_text, current_law_id="oug_13_2026")
+# → DataFrame(head, relation, tail)
 ```
 
-### `knowledge_base.py`
-Manages legislative knowledge:
-- Store/retrieve triples
-- Query by entity or relation
-- Find modification chains
-- Export knowledge base
-- Semantic vector search (via Chroma)
+### `src/relation_vocabulary.py`
+Vocabular închis cu 16 relații canonice. Folosit în prompt, parser și
+validare:
 
-```python
-from src import LegislativeKnowledgeBase
+| Relație | Semnificație |
+|---|---|
+| `emis_de` | cine a emis actul |
+| `promulgat_de` | cine a promulgat |
+| `publicat_în` | unde a fost publicat |
+| `modifică` | ce act/articol modifică |
+| `completează` | ce act completează |
+| `abroga` | ce act abrogă |
+| `introduce` | ce articol nou introduce |
+| `republică` | ce act republică |
+| `aprobă` | ce act aprobă |
+| `face_referire_la` | trimitere (citare) |
+| `intră_în_vigoare` | data/condiția de intrare în vigoare |
+| `are_sediul_în` | unde are sediul o entitate |
+| `responsabil_pentru` | responsabilitate |
+| `colaborează_cu` | colaborare |
+| `se_aplică` | domeniu de aplicare |
+| `transpune` | transpunere directivă/regulament UE |
 
-kb = LegislativeKnowledgeBase()
-kb.add_triples(triples_df)
-modified_laws = kb.get_laws_modified_by('Legea nr. 450/2024')
-```
-
-### `ontology.py`
-Legislative ontological reasoning with 6 axiom types:
-- **Functional properties** - One emitter per law
-- **Asymmetric properties** - No circular modifications
-- **Irreflexive properties** - No self-reference
-- **Symmetric properties** - Bidirectional collaboration
-- **Domain constraints** - Valid entity types
-- **Transitive analysis** - Modification chains
-
+### `src/ontology.py`
 ```python
 from src import LegislativeOntologyReasoner
 
 reasoner = LegislativeOntologyReasoner(triples_df)
 reasoner.run_all_tests()
+# Verifică: funcționale, asimetrice, ireflexive, simetrice, domeniu, tranzitive
 ```
 
-### `llm_handler.py`
-LLM integration for triple extraction:
-- Ollama model management
-- Romanian text → triples
-- Vector embeddings
-- Chroma vector store
+---
+
+## Corpus legislativ
+
+8 acte normative din `data/raw_laws/` (detalii complete în
+[data/raw_laws/SOURCES.md](data/raw_laws/SOURCES.md)):
+
+| `law_id` | Act | An |
+|---|---|---|
+| `lege_53_2003` | Codul muncii (republicare) | 2003/2011 |
+| `lege_190_2018` | Lege GDPR Romania (aplicare Reg. UE 2016/679) | 2018 |
+| `lege_24_2000` | Normele de tehnică legislativă | 2000/2004 |
+| `oug_156_2024` | Măsuri fiscal-bugetare 2025 | 2024 |
+| `oug_13_2026` | Modificări fiscal-bugetare | 2026 |
+| `oug_5_2026` | Modificări instituții de credit | 2026 |
+| `hg_214_2026` | Actualizare valori inventar SPP | 2026 |
+| `hg_24_2026` | Eliberare din funcție subprefect | 2026 |
+
+---
+
+## Fișiere de ieșire
+
+| Fișier | Conținut |
+|---|---|
+| `output/legislative_triples.csv` | Triple extrase (head, relation, tail, law_id, article_number) |
+| `output/legislative_corpus.csv` | Corpusul de legi indexate |
+| `output/knowledge_base_export.csv` | Export baza de cunoaștere |
+| `output/legislative_knowledge_db/` | Baza vectorială ChromaDB persistentă |
+
+---
+
+## Configurare
+
+Setările principale se află în `src/config.py`:
 
 ```python
-from src import TripleExtractor, LLMHandler
-
-llm = LLMHandler(temperature=0.1)
-extractor = TripleExtractor(llm_handler=llm)
-triples = extractor.extract_from_romanian_text(law_text)
-```
-
-## 🔧 Configuration
-
-All settings in `src/config.py`:
-
-```python
-# Models
-LLM_MODEL = "gemma2:2b"
+LLM_MODEL = "gemma2:9b"
 EMBEDDING_MODEL = "nomic-embed-text"
 
-# Ontology Rules
-LEGISLATIVE_FUNCTIONAL_RELATIONS = ['emis_de', 'promulgat_de']
-LEGISLATIVE_ASYMMETRIC_RELATIONS = ['modifică', 'abroga']
-LEGISLATIVE_IRREFLEXIVE_RELATIONS = ['modifică', 'promulgat_de', 'emis_de']
-
-# Legislative Hierarchy
-LAW_HIERARCHY = {
-    'Constituție': 1,
-    'Lege organică': 2,
-    'Lege': 3,
-    'Ordonanță de urgență': 4
-}
+LEGISLATIVE_FUNCTIONAL_RELATIONS = ["emis_de", "promulgat_de"]
+LEGISLATIVE_ASYMMETRIC_RELATIONS = ["modifică", "abroga"]
+LEGISLATIVE_IRREFLEXIVE_RELATIONS = ["modifică", "promulgat_de", "emis_de"]
 ```
 
-## 📊 Output Files
+Comutatoare din `main.py`:
 
-All outputs saved to `output/`:
-
-| File | Description |
-|------|-------------|
-| `legislative_triples.csv` | All extracted knowledge triples |
-| `legislative_corpus.csv` | Generated law texts with IDs |
-| `knowledge_base_export.csv` | Exported knowledge base |
-| `legislative_relation_distribution.png` | Relation type analysis |
-| `legislative_knowledge_graph.png` | Graph visualization |
-| `legislative_knowledge_db/` | Chroma vector database with embeddings |
-
-## 🎓 Key Features
-
-### 1. Romanian Law Generation
 ```python
-from src import generate_romanian_law
-
-# Simple law
-law = generate_romanian_law('simple', topic='educația națională')
-
-# Complex law with chapters
-law = generate_romanian_law('complex', topic='protecția mediului')
+USE_REAL_LAWS = True        # False → generator sintetic (pentru teste)
+MAX_LAWS = None             # None → toate legile din data/raw_laws/
+MAX_ARTICLES_PER_LAW = None # None → toate articolele
 ```
 
-### 2. Knowledge Extraction
-```python
-from src import TripleExtractor, LLMHandler
+---
 
-llm = LLMHandler(temperature=0.1)
-extractor = TripleExtractor(llm_handler=llm)
-
-text = "Legea nr. 450/2024 este emisă de Parlamentul României."
-triples = extractor.extract_from_romanian_text(text)
-```
-
-### 3. Ontological Validation
-```python
-from src import LegislativeOntologyReasoner
-
-reasoner = LegislativeOntologyReasoner(triples_df)
-reasoner.verify_functional_properties()
-reasoner.verify_asymmetric_properties()
-reasoner.verify_domain_constraints()
-```
-
-### 4. Knowledge Base Queries
-```python
-from src import LegislativeKnowledgeBase
-
-kb = LegislativeKnowledgeBase()
-
-# Find laws that modify a specific law
-modifiers = kb.get_laws_modifying('Legea nr. 100/2018')
-
-# Get who emitted a law
-emitter = kb.get_law_emitter('Legea nr. 450/2024')
-
-# Query by relation type
-all
-
-### 5. Semantic Vector Search
-```python
-from src import VectorStoreHandler, EmbeddingsHandler
-
-embeddings = EmbeddingsHandler()
-vector_store_handler = VectorStoreHandler(embeddings)
-vector_store = vector_store_handler.get_store()
-
-# Add law texts with embeddings
-vector_store.add_texts(
-    texts=[law_text],
-    metadatas=[{"law_id": "law_123"}],
-    ids=["law_123"]
-)
-
-# Semantic similarity search
-results = vector_store.similarity_search("digitalizare și tehnologie", k=3)
-for doc in results:
-    print(f"Law: {doc.metadata['law_id']}")
-    print(f"Text: {doc.page_content[:200]}...")
-```_modifications = kb.query_by_relation('modifică')
-```
-
-## 🔄 Ontology Rules
-
-### Functional Properties
-- A law has ONE primary emitter
-- A law is promulgated by ONE president
-- A law is published in ONE official monitor
-
-### Asymmetric Properties
-- If� Installation (if setting up from scratch)
-
-If you need to set up this project on a new machine:
-
-1. **Install Python 3.8+**
-
-2. **Install Ollama:**
-   ```bash
-   # macOS
-   brew install ollama
-   
-   # Or download from https://ollama.ai
-   ```
-
-3. **Pull required Ollama models:**
-   ```bash
-   ollama pull gemma2:2b
-   ollama pull nomic-embed-text
-   ```
-
-4. **Create virtual environment and install dependencies:**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-5. **Set up pre-commit hooks (optional but recommended):**
-   ```bash with automated pre-commit hooks.
-
-### Pre-commit Hooks (Recommended)
-Pre-commit hooks automatically format code before each commit:
+## Formatare cod
 
 ```bash
-# Install hooks (one-time setup, already done)
-pre-commit install
-
-# Run manually on all files
+ruff format .          # formatare
+ruff check --fix .     # linting cu auto-fix
 pre-commit run --all-files
-
-# Bypass hooks (not recommended)
-git commit --no-verify
 ```
 
-### Manual Formatting
-```bash
-# Format all Python files
-ruff format .
+---
 
-# Run linter with auto-fix
-ruff check --fix .
-```
+## Licență
 
-### Configuration Files
-- **`.pre-commit-config.yaml`** - Pre-commit hook configuration (ruff v0.8.4)
-- **`pyproject.toml`** - Ruff linting/formatting rules (line length 100, double quotes)
-- **`.gitignore`** - Git exclusions (Python cache, venv, output files, vector DBs)
-� Repository
+MIT — vezi [LICENSE](LICENSE).
 
-- **GitHub:** [romanian-legislative-kg](https://github.com/fugulinmaria/romanian-legislative-kg)
-- **License:** MIT
-- **Version:** 2.0.0
-
-## ⚠️ Troubleshooting
-
-- **Vector-based semantic search** for finding similar legislation
-**"command not found: python"**
-- Use `python3` instead of `python`
-
-**"Connection refused" from Ollama**
-- Start Ollama service: `ollama serve`
-- Verify models are installed: `ollama list`
-
-**Import errors**
-- Ensure virtual environment is activated: `source .venv/bin/activate`
-- Check installed packages: `pip list`
-### Domain Constraints
-- Only Parliament/Government can emit laws
-- Only President can promulgate laws
-- Only Official Monitor can publish laws
-
-## 🎯 Research Focus
-
-This system addresses:
-- **Knowledge extraction** from Romanian legislative texts
-- **Ontological reasoning** for legal knowledge validation
-- **Knowledge graph construction** for legislative relationships
-- **Semantic analysis** of legislative amendments and hierarchies
-
-## 📝 Notes
-
-- All configuration in `src/config.py`
-- Requires Ollama with Romanian-capable LLM
-- Knowledge base persists between runs
-- Vector store enables semantic search
-
-
-
+Textele legislative sunt proprietatea publică a statului român și sunt
+disponibile la [legislatie.just.ro](https://legislatie.just.ro).

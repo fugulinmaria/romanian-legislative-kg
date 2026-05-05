@@ -35,7 +35,7 @@ class LLMHandler:
 
         self.model_name = model
         self.temperature = temperature
-        self.llm = OllamaLLM(model=model, temperature=temperature)
+        self.llm = OllamaLLM(model=model, temperature=temperature, timeout=120)
 
     def invoke(self, prompt_text):
         """
@@ -138,7 +138,7 @@ class TripleExtractor:
         Returns:
             str: Raw LLM response with extracted triples
         """
-        template = """Extract entities and relations as a list of triplets: [Entity1, Relation, Entity2]. 
+        template = """Extract entities and relations as a list of triplets: [Entity1, Relation, Entity2].
 
 Text: {text}
 
@@ -157,40 +157,46 @@ Triplets:"""
         Returns:
             pd.DataFrame: DataFrame with columns ['head', 'relation', 'tail']
         """
-        print("\nExtracting triples from Romanian text using LLM...")
+        from .relation_vocabulary import prompt_vocabulary_block
+
+        # Truncate long articles — the LLM only needs the first ~2 000 chars to
+        # find canonical relations; the regex pre-pass already handled citations.
+        MAX_LLM_CHARS = 2000
+        if len(text) > MAX_LLM_CHARS:
+            text = text[:MAX_LLM_CHARS]
 
         template = """Ești un sistem expert de extragere a informațiilor din texte legislative românești.
 
-SARCINĂ: Extrage TOATE relațiile din textul legislativ de mai jos. Pentru fiecare articol, identifică toate faptele.
+SARCINĂ: Extrage TOATE relațiile din textul de mai jos.
 
-RELAȚII DE CĂUTAT:
-- emis_de: cine a emis legea (Parlamentul, Guvernul)
-- modifică: ce legi modifică
-- abroga: ce articole sau legi abrogă
-- completează: ce legi completează
-- promulgat_de: cine a promulgat (Președintele)
-- publicat_în: unde a fost publicată (Monitorul Oficial)
-- are_sediul_în: unde are sediul o entitate
-- responsabil_pentru: cine este responsabil
-- colaborează_cu: cine colaborează cu cine
-- intră_în_vigoare: când intră în vigoare
+REGULI STRICTE:
+1. Folosește DOAR relațiile din lista de mai jos. Dacă un fapt nu se încadrează în această listă, IGNORĂ-L.
+2. Format de ieșire OBLIGATORIU: o tripletă pe linie, separată cu pipe (|), între paranteze pătrate:
+   [Subiect | relație | Obiect]
+3. NU folosi virgule ca separator. Subiectul și obiectul pot conține virgule normale.
+4. Nu adăuga explicații, doar tripletele.
 
-FORMAT DE IEȘIRE: O tripletă pe linie în format: [Subiect, relație, Obiect]
+RELAȚII PERMISE:
+{vocab}
 
-EXEMPLU:
-Text: "Legea nr. 100/2020 este emisă de Parlamentul României. Această lege modifică Legea nr. 50/2015."
+EXEMPLE:
+Text: "Legea nr. 100/2020 modifică Legea nr. 50/2015. A fost publicată în Monitorul Oficial nr. 200/2020."
 Triplete:
-[Legea nr. 100/2020, emis_de, Parlamentul României]
-[Legea nr. 100/2020, modifică, Legea nr. 50/2015]
+[Legea nr. 100/2020 | modifică | Legea nr. 50/2015]
+[Legea nr. 100/2020 | publicat_în | Monitorul Oficial nr. 200/2020]
 
-Acum extrage TOATE tripletele din acest text:
+Text: "Articolul 5 din Legea nr. 53/2003 - Codul muncii se modifică și va avea următorul cuprins: ..."
+Triplete:
+[Articolul 5 | modifică | Legea nr. 53/2003 - Codul muncii]
+
+Acum extrage tripletele din acest text:
 
 Text: {text}
 
 Triplete:"""
 
         chain = self.llm_handler.create_chain(template)
-        response = chain.invoke({"text": text})
+        response = chain.invoke({"text": text, "vocab": prompt_vocabulary_block()})
 
         print(f"LLM Response preview: {response[:300]}...")
 
@@ -202,46 +208,62 @@ Triplete:"""
         return pd.DataFrame(triples, columns=["head", "relation", "tail"])
 
     def _parse_triple_response(self, response):
-        """
-        Parse LLM response into structured triples.
+        """Parse LLM response into structured triples.
 
-        Args:
-            response (str): Raw LLM response
-
-        Returns:
-            list: List of [head, relation, tail] triples
+        Accepts pipe-delimited format ``[head | relation | tail]`` (preferred)
+        and falls back to comma-split for legacy responses. Filters relations
+        through the canonical vocabulary; out-of-vocabulary triples are dropped.
         """
+        from .relation_vocabulary import normalize_relation
+
         triples = []
-        lines = response.strip().split("\n")
+        kept = 0
+        dropped_unknown_rel = 0
 
-        for line in lines:
-            line = line.strip()
-
-            if not line or line.lower().startswith(("text:", "triplete:", "exemplu:", "format:")):
+        for raw_line in response.strip().split("\n"):
+            line = raw_line.strip()
+            if not line or line.lower().startswith(
+                ("text:", "triplete:", "exemplu:", "format:", "reguli")
+            ):
+                continue
+            if "[" not in line or "]" not in line:
                 continue
 
-            if "[" in line and "]" in line:
-                try:
-                    start_idx = line.index("[")
-                    end_idx = line.rindex("]")
-                    triple_str = line[start_idx + 1 : end_idx]
+            try:
+                start_idx = line.index("[")
+                end_idx = line.rindex("]")
+                inner = line[start_idx + 1 : end_idx].strip()
+                inner = inner.replace('"', "").replace("'", "")
 
-                    triple_str = triple_str.replace('"', "").replace("'", "")
+                # Prefer pipe split (new format)
+                if "|" in inner:
+                    parts = [p.strip() for p in inner.split("|")]
+                else:
+                    # Legacy comma split — only safe when exactly 2 commas
+                    parts = [p.strip() for p in inner.split(",")]
+                    if len(parts) > 3:
+                        # Re-join everything past the relation as the tail
+                        parts = [parts[0], parts[1], ",".join(parts[2:]).strip()]
 
-                    parts = [p.strip() for p in triple_str.split(",")]
-
-                    if len(parts) >= 3:
-                        head = parts[0].strip()
-                        relation = parts[1].strip()
-                        tail = ",".join(parts[2:]).strip()
-
-                        if head and relation and tail:
-                            triples.append([head, relation, tail])
-                except Exception as e:
-                    print(f"  [WARN] Failed to parse line: '{line[:80]}...' - Error: {e}")
+                if len(parts) < 3:
                     continue
 
-        print(f"  [OK] Parsed {len(triples)} triples from LLM response")
+                head, relation, tail = parts[0], parts[1], parts[2]
+                if not (head and relation and tail):
+                    continue
+
+                canonical = normalize_relation(relation)
+                if canonical is None:
+                    dropped_unknown_rel += 1
+                    continue
+
+                triples.append([head, canonical, tail])
+                kept += 1
+            except Exception as e:  # noqa: BLE001
+                print(f"  [WARN] Failed to parse line: '{line[:80]}...' - {e}")
+                continue
+
+        print(f"  [OK] Parsed {kept} triples (dropped {dropped_unknown_rel} with unknown relation)")
         return triples
 
 

@@ -38,6 +38,10 @@ select = [
 # Ignore specific rules if needed
 ignore = []
 
+[tool.ruff.lint.per-file-ignores]
+"src/llm_handler.py" = ["E501"]
+"src/legislative_generator.py" = ["E501"]
+
 [tool.ruff.format]
 # Use double quotes for strings
 quote-style = "double"

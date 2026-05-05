@@ -1,13 +1,17 @@
 """
 Romanian Legislative Knowledge Graph Analysis Package
-Provides modular tools for generating, extracting, and reasoning over Romanian legislative knowledge.
+Provides modular tools for generating, extracting, and reasoning
+over Romanian legislative knowledge.
 """
 
-from .config import *
+from .article_splitter import split_into_articles
+from .config import *  # noqa: F403
+from .cross_reference_extractor import extract_cross_references
 from .data_loader import TripleDataLoader, load_legislative_triples, save_legislative_triples
 from .eda import KnowledgeGraphEDA
 from .graph_builder import KnowledgeGraphBuilder, build_graph_from_triples
 from .knowledge_base import LegislativeKnowledgeBase, create_knowledge_base
+from .law_loader import LawRecord, load_one, load_real_laws
 from .legislative_generator import RomanianLegislativeGenerator, generate_romanian_law
 from .llm_handler import (
     EmbeddingsHandler,
@@ -48,4 +52,12 @@ __all__ = [
     # Knowledge Base
     "LegislativeKnowledgeBase",
     "create_knowledge_base",
+    # Real Law Loader
+    "load_real_laws",
+    "load_one",
+    "LawRecord",
+    # Article Splitter
+    "split_into_articles",
+    # Cross-reference extractor
+    "extract_cross_references",
 ]
