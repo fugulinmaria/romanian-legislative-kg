@@ -1,250 +1,209 @@
-# Graf de Cunoaștere Legislativă Românească
+# Romanian Legislative Knowledge Graph
 
-Un framework modular pentru extragerea, stocarea și raționamentul asupra
-grafurilor de cunoaștere construite din acte normative românești reale,
-folosind extragere de triple bazată pe LLM + regex și validare ontologică
-specifică domeniului legislativ.
+A modular pipeline for extracting, storing, and reasoning over a knowledge
+graph built from real Romanian legislation, using hybrid regex + LLM triple
+extraction and a closed relation vocabulary.
 
-## Prezentare generală
+## Features
 
-Sistemul procesează acte normative românești descărcate de pe
-[legislatie.just.ro](https://legislatie.just.ro) și le transformă într-un
-graf de cunoaștere interogabil semantic.
-
-Caracteristici principale:
-- **Corpus real** — 8 acte normative (legi, OUG, HG) stocate în `data/raw_laws/`
-- **Extragere hibridă** — regex deterministic pentru referințe legislative +
-  LLM (`gemma2:9b`) pentru relații semantice mai complexe
-- **Vocabular închis** — 16 relații canonice; relațiile inventate de LLM sunt
-  filtrate automat
-- **Normalizare text** — NFC, corecție diacritice, eliminare antet
-- **Segmentare articole** — algoritm LIS pentru filtrarea titlurilor de articole
-  citate în corpul altui articol
-- **Bază de cunoaștere vectorială** — ChromaDB cu embeddings `nomic-embed-text`
-- **Raționament ontologic** — verificare proprietăți funcționale, asimetrice,
-  ireflexive și constrângeri de domeniu
-
----
-
-## Structura proiectului
-
-```
-Code/
-├── data/
-│   └── raw_laws/               # Acte normative reale (.txt + .meta.json)
-│       └── SOURCES.md          # Bibliografie completă a corpusului
-│
-├── scripts/
-│   ├── generate_meta.py        # Generare automată fișiere .meta.json
-│   └── validate_pipeline.py    # Validare metrici + ontologie (Phase G)
-│
-├── src/                        # Pachet Python principal
-│   ├── config.py               # Configurare modele și constante ontologie
-│   ├── text_normalizer.py      # NFC + diacritice + eliminare antet
-│   ├── law_loader.py           # Încărcare LawRecord = (law_id, text, meta)
-│   ├── article_splitter.py     # Segmentare articole (LIS anti-poluare)
-│   ├── relation_vocabulary.py  # 16 relații canonice + sinonime + prompt
-│   ├── cross_reference_extractor.py  # Regex pre-pass referințe legislative
-│   ├── llm_handler.py          # Prompt pipe-format + parser + vocab filter
-│   ├── knowledge_base.py       # Stocare/interogare triple + ChromaDB
-│   ├── graph_builder.py        # Construcție graf NetworkX
-│   ├── ontology.py             # Raționament ontologic (6 tipuri de axiome)
-│   ├── eda.py                  # Analiză exploratorie și vizualizări
-│   └── legislative_generator.py # Generator legi sintetice (fallback/test)
-│
-├── output/                     # Fișiere generate (excluse din git)
-│   ├── legislative_triples.csv
-│   ├── legislative_corpus.csv
-│   ├── knowledge_base_export.csv
-│   └── legislative_knowledge_db/  # Baza vectorială ChromaDB
-│
-├── main.py                     # Pipeline principal
-├── requirements.txt
-├── pyproject.toml              # Configurare Ruff
-└── README.md
-```
+- **Real corpus** — 8 normative acts (laws, government emergency ordinances,
+  government decisions) downloaded from
+  [legislatie.just.ro](https://legislatie.just.ro), stored in
+  [data/raw_laws/](data/raw_laws/).
+- **Hybrid extraction** — deterministic regex for legislative citations
+  (bidirectional trigger search, with self-citation filtering) + the
+  `gemma2:9b` LLM for richer semantic relations, with windowing
+  (4000 chars / 200 overlap) for long articles.
+- **Closed vocabulary** — 16 canonical relations (see below); any relation
+  invented by the LLM is normalized via a synonym map or filtered out.
+- **Anaphora resolution** — `prezenta lege`, `codul`, `hotărârea` are
+  rewritten to the current `law_id` (in both `head` and `tail`).
+- **Entity canonicalization** — NFC, diacritics, whitespace, casing — surface
+  variants collapse to a single graph node.
+- **Provenance** — every triple keeps `law_id` + `article_number` through the
+  whole stack (KB, NetworkX graph, ontology reasoner).
+- **Vector store** — ChromaDB persisted at `output/legislative_knowledge_db/`
+  with `nomic-embed-text` embeddings.
+- **Ontology reasoning** — 6 axioms (functional, asymmetric, irreflexive,
+  symmetric, domain, transitive) with provenance annotation on violations.
+- **Ollama health check** — the pipeline fails fast with a clear message if
+  the server or models are missing.
 
 ---
 
-## Pornire rapidă
+## Quick start
 
-### Prerequisite
+### Prerequisites
 
 - Python 3.11+
-- [Ollama](https://ollama.ai) instalat și pornit (`ollama serve`)
-- Modelele descărcate:
+- [Ollama](https://ollama.ai) running (`ollama serve`)
+- Models pulled:
   ```bash
   ollama pull gemma2:9b
   ollama pull nomic-embed-text
   ```
 
-### Instalare
+### Install
 
 ```bash
-git clone <repo>
-cd Code
+git clone <repo> && cd Code
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Rulare pipeline
+### Run the pipeline
 
 ```bash
-# Prima rulare — sau după ștergerea bazei vectoriale
-python3 main.py
+# Standard run (appends to existing KB)
+python main.py
 
-# Rulare rapidă (smoke test, primele 2 legi, 3 articole fiecare)
-# Editează main.py: MAX_LAWS=2, MAX_ARTICLES_PER_LAW=3
-python3 main.py
+# Clean run (wipes CSVs + Chroma DB first)
+python main.py --fresh
+
+# Quick smoke test
+python main.py --fresh --max-laws 1 --max-articles 3
+
+# Override models / windowing parameters
+python main.py --llm-model llama3.1:8b --llm-window 3000 --llm-overlap 150
+
+# Synthetic mode (no real corpus)
+python main.py --synthetic
 ```
 
-### Validare rezultate
+See `python main.py --help` for the full flag list.
+
+### Validate results
 
 ```bash
-python3 scripts/validate_pipeline.py
-
-# Spot-check pe alte legi
-python3 scripts/validate_pipeline.py --laws lege_24_2000 oug_13_2026
+python scripts/validate_pipeline.py
+python scripts/validate_pipeline.py --laws lege_24_2000 oug_13_2026
 ```
 
 ---
 
-## Modulele principale
+## Project layout
 
-### `src/text_normalizer.py`
-```python
-from src.text_normalizer import normalize_ro
-
-text = normalize_ro(raw_text)  # NFC + cedile → virgule + eliminare antet
 ```
-
-### `src/law_loader.py`
-```python
-from src import load_real_laws
-
-laws = load_real_laws("data/raw_laws")
-# → [(law_id, normalized_text, metadata_dict), ...]
-```
-
-### `src/article_splitter.py`
-```python
-from src import split_into_articles
-
-articles = split_into_articles(text)
-# → [{"article_number": "1", "header": "Articolul 1", "text": "..."}, ...]
-```
-
-### `src/cross_reference_extractor.py`
-Pre-pas regex determinist — detectează citări de tipul
-`"modifică Legea nr. 53/2003"` fără a apela LLM-ul.
-
-```python
-from src import extract_cross_references
-
-df = extract_cross_references(article_text, current_law_id="oug_13_2026")
-# → DataFrame(head, relation, tail)
-```
-
-### `src/relation_vocabulary.py`
-Vocabular închis cu 16 relații canonice. Folosit în prompt, parser și
-validare:
-
-| Relație | Semnificație |
-|---|---|
-| `emis_de` | cine a emis actul |
-| `promulgat_de` | cine a promulgat |
-| `publicat_în` | unde a fost publicat |
-| `modifică` | ce act/articol modifică |
-| `completează` | ce act completează |
-| `abroga` | ce act abrogă |
-| `introduce` | ce articol nou introduce |
-| `republică` | ce act republică |
-| `aprobă` | ce act aprobă |
-| `face_referire_la` | trimitere (citare) |
-| `intră_în_vigoare` | data/condiția de intrare în vigoare |
-| `are_sediul_în` | unde are sediul o entitate |
-| `responsabil_pentru` | responsabilitate |
-| `colaborează_cu` | colaborare |
-| `se_aplică` | domeniu de aplicare |
-| `transpune` | transpunere directivă/regulament UE |
-
-### `src/ontology.py`
-```python
-from src import LegislativeOntologyReasoner
-
-reasoner = LegislativeOntologyReasoner(triples_df)
-reasoner.run_all_tests()
-# Verifică: funcționale, asimetrice, ireflexive, simetrice, domeniu, tranzitive
+Code/
+├── data/raw_laws/              # Normative acts (.txt + .meta.json) + SOURCES.md
+├── scripts/
+│   ├── generate_meta.py        # Auto-generate .meta.json files
+│   └── validate_pipeline.py    # Metric + ontology validation
+├── src/
+│   ├── config.py                  # Models, paths, ontology configuration
+│   ├── text_normalizer.py         # NFC + diacritics + header stripping
+│   ├── law_loader.py              # LawRecord = (law_id, text, meta)
+│   ├── article_splitter.py        # Article segmentation (LIS anti-noise)
+│   ├── relation_vocabulary.py     # 16 canonical relations + synonyms + prompt
+│   ├── cross_reference_extractor.py  # Regex pre-pass (bidirectional)
+│   ├── pronoun_resolver.py        # Resolves "prezenta lege" etc.
+│   ├── entity_canonicalizer.py    # Entity surface-form normalization
+│   ├── llm_handler.py             # Ollama + windowing + parser + health check
+│   ├── knowledge_base.py          # KB with provenance + ChromaDB
+│   ├── graph_builder.py           # MultiDiGraph (from_pandas_edgelist)
+│   ├── ontology.py                # 6 axioms with provenance annotation
+│   ├── eda.py                     # EDA + visualizations
+│   └── legislative_generator.py   # Synthetic generator (fallback)
+├── output/                     # CSVs + Chroma DB (gitignored)
+├── main.py
+├── requirements.txt
+├── pyproject.toml
+└── README.md
 ```
 
 ---
 
-## Corpus legislativ
+## CLI flags
 
-8 acte normative din `data/raw_laws/` (detalii complete în
-[data/raw_laws/SOURCES.md](data/raw_laws/SOURCES.md)):
-
-| `law_id` | Act | An |
+| Flag | Default | Effect |
 |---|---|---|
-| `lege_53_2003` | Codul muncii (republicare) | 2003/2011 |
-| `lege_190_2018` | Lege GDPR Romania (aplicare Reg. UE 2016/679) | 2018 |
-| `lege_24_2000` | Normele de tehnică legislativă | 2000/2004 |
-| `oug_156_2024` | Măsuri fiscal-bugetare 2025 | 2024 |
-| `oug_13_2026` | Modificări fiscal-bugetare | 2026 |
-| `oug_5_2026` | Modificări instituții de credit | 2026 |
-| `hg_214_2026` | Actualizare valori inventar SPP | 2026 |
-| `hg_24_2026` | Eliberare din funcție subprefect | 2026 |
+| `--fresh` | – | Wipe CSVs in `output/` + Chroma DB before running |
+| `--synthetic` | – | Use the synthetic generator instead of the real corpus |
+| `--max-laws N` | all | Cap the number of acts processed |
+| `--max-articles N` | all | Cap articles per act |
+| `--llm-model` | `gemma2:9b` | Ollama LLM model name |
+| `--embedding-model` | `nomic-embed-text` | Ollama embedding model name |
+| `--llm-window` | `4000` | Max characters per LLM window |
+| `--llm-overlap` | `200` | Overlap between LLM windows |
 
 ---
 
-## Fișiere de ieșire
+## Relation vocabulary (16)
 
-| Fișier | Conținut |
+| Relation | Meaning |
 |---|---|
-| `output/legislative_triples.csv` | Triple extrase (head, relation, tail, law_id, article_number) |
-| `output/legislative_corpus.csv` | Corpusul de legi indexate |
-| `output/knowledge_base_export.csv` | Export baza de cunoaștere |
-| `output/legislative_knowledge_db/` | Baza vectorială ChromaDB persistentă |
+| `emis_de` | issuing authority (functional) |
+| `promulgat_de` | promulgating authority (functional) |
+| `publicat_în` | publication venue (functional) |
+| `modifică` | amends another act (asymmetric, irreflexive, transitive) |
+| `completează` | supplements (asymmetric, irreflexive) |
+| `abroga` | repeals (asymmetric, irreflexive) |
+| `introduce` | introduces a new article |
+| `republică` | republishes |
+| `aprobă` | approves |
+| `face_referire_la` | generic reference |
+| `intră_în_vigoare` | entry-into-force date / condition |
+| `are_sediul_în` | entity headquarters |
+| `responsabil_pentru` | responsibility |
+| `colaborează_cu` | collaboration (symmetric) |
+| `se_aplică` | scope of application |
+| `transpune` | transposes EU directive / regulation |
+
+The associated ontology constants (functional / asymmetric / etc.) live in
+[src/config.py](src/config.py).
 
 ---
 
-## Configurare
+## Corpus
 
-Setările principale se află în `src/config.py`:
+8 normative acts — full details in
+[data/raw_laws/SOURCES.md](data/raw_laws/SOURCES.md).
+
+| `law_id` | Act | Year |
+|---|---|---|
+| `lege_53_2003` | Labour Code (republished) | 2003 / 2011 |
+| `lege_190_2018` | GDPR application law | 2018 |
+| `lege_24_2000` | Legislative drafting norms | 2000 / 2004 |
+| `oug_156_2024` | Fiscal-budgetary measures 2025 | 2024 |
+| `oug_13_2026` | Fiscal-budgetary amendments | 2026 |
+| `oug_5_2026` | Credit-institutions amendments | 2026 |
+| `hg_214_2026` | SPP inventory value updates | 2026 |
+| `hg_24_2026` | Sub-prefect dismissal | 2026 |
+
+---
+
+## Outputs
+
+In `output/`:
+
+- `legislative_triples.csv` — triples `(head, relation, tail, law_id, article_number)`.
+- `legislative_corpus.csv` — normalized law texts.
+- `knowledge_base_export.csv` — full export.
+- `legislative_knowledge_db/` — persistent ChromaDB collection
+  (`romanian_legislative_knowledge`).
+- `legislative_relation_distribution.png`, `legislative_knowledge_graph.png`.
+
+---
+
+## Programmatic use
 
 ```python
-LLM_MODEL = "gemma2:9b"
-EMBEDDING_MODEL = "nomic-embed-text"
+from src import (
+    LegislativeKnowledgeBase, build_graph_from_triples,
+    LegislativeOntologyReasoner, resolve_pronouns, canonicalize_entities,
+)
 
-LEGISLATIVE_FUNCTIONAL_RELATIONS = ["emis_de", "promulgat_de"]
-LEGISLATIVE_ASYMMETRIC_RELATIONS = ["modifică", "abroga"]
-LEGISLATIVE_IRREFLEXIVE_RELATIONS = ["modifică", "promulgat_de", "emis_de"]
+kb = LegislativeKnowledgeBase()
+kb.load()
+
+# Provenance-aware queries
+kb.query_by_law("lege_53_2003")
+kb.query_by_article("oug_13_2026", "5")
+
+# Graph with provenance on edges
+G = build_graph_from_triples(kb.triples_df)
+
+# Ontology validation
+LegislativeOntologyReasoner(kb.triples_df).run_all_tests()
 ```
-
-Comutatoare din `main.py`:
-
-```python
-USE_REAL_LAWS = True        # False → generator sintetic (pentru teste)
-MAX_LAWS = None             # None → toate legile din data/raw_laws/
-MAX_ARTICLES_PER_LAW = None # None → toate articolele
-```
-
----
-
-## Formatare cod
-
-```bash
-ruff format .          # formatare
-ruff check --fix .     # linting cu auto-fix
-pre-commit run --all-files
-```
-
----
-
-## Licență
-
-MIT — vezi [LICENSE](LICENSE).
-
-Textele legislative sunt proprietatea publică a statului român și sunt
-disponibile la [legislatie.just.ro](https://legislatie.just.ro).
