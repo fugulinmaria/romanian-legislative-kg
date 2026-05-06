@@ -117,16 +117,6 @@ class TripleExtractor:
         else:
             self.llm_handler = llm_handler
 
-    def extract_from_english_text(self, text):
-        template = """Extract entities and relations as a list of triplets: [Entity1, Relation, Entity2].
-
-Text: {text}
-
-Triplets:"""
-
-        chain = self.llm_handler.create_chain(template)
-        return chain.invoke({"text": text})
-
     MAX_LLM_CHARS = 4000
     LLM_OVERLAP = 200
 
@@ -287,62 +277,3 @@ Triplete:"""
 
         print(f"  [OK] Parsed {kept} triples (dropped {dropped_unknown_rel} with unknown relation)")
         return triples
-
-
-class KnowledgeGraphEvaluator:
-    """Evaluates LLM extraction performance on knowledge graph data."""
-
-    def __init__(self, llm_handler=None):
-        if llm_handler is None:
-            self.llm_handler = LLMHandler()
-        else:
-            self.llm_handler = llm_handler
-
-        self.extractor = TripleExtractor(llm_handler=self.llm_handler)
-
-    def evaluate_on_samples(self, df, sample_size=3):
-        """Run the extractor on `sample_size` random rows and print results."""
-        print("\n" + "=" * 60)
-        print(f" LLM EXTRACTION EVALUATION ({sample_size} samples)")
-        print("=" * 60)
-
-        samples = df.sample(n=min(sample_size, len(df)))
-        results = []
-
-        for idx, row in samples.iterrows():
-            text = f"{row['head']} {row['relation']} {row['tail']}"
-            prediction = self.extractor.extract_from_english_text(text)
-
-            print(f"\n--- Sample {len(results) + 1} ---")
-            print(f"Input: {text}")
-            print(f"Ground Truth: [{row['head']}, {row['relation']}, {row['tail']}]")
-            print(f"LLM Output: {prediction.strip()}")
-
-            results.append(
-                {
-                    "input": text,
-                    "ground_truth": [row["head"], row["relation"], row["tail"]],
-                    "prediction": prediction.strip(),
-                }
-            )
-
-        return results
-
-
-# Convenience functions for initialization
-def init_llm_models(verbose=True):
-    """Initialize LLM, embeddings and vector store; return them in a dict."""
-    if verbose:
-        print("Initializing local models (this may take a moment)...")
-
-    embeddings_handler = EmbeddingsHandler(verbose=verbose)
-    llm_handler = LLMHandler(verbose=verbose)
-    vector_store_handler = VectorStoreHandler(
-        embeddings_handler=embeddings_handler, verbose=verbose
-    )
-
-    return {
-        "llm": llm_handler,
-        "embeddings": embeddings_handler,
-        "vector_store": vector_store_handler.get_store(),
-    }

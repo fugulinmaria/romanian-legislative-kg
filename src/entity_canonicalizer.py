@@ -14,15 +14,7 @@ import unicodedata
 
 import pandas as pd
 
-# Cedilla -> comma-below diacritic map (mirrors text_normalizer).
-_DIACRITIC_MAP = str.maketrans(
-    {
-        "\u015f": "\u0219",
-        "\u015e": "\u0218",  # ş/Ş -> ș/Ș
-        "\u0163": "\u021b",
-        "\u0162": "\u021a",  # ţ/Ţ -> ț/Ț
-    }
-)
+from .text_normalizer import _DIACRITIC_MAP
 
 # Zero-width and NBSP characters to strip.
 _ZW_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff\u00a0]")

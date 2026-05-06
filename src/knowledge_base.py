@@ -7,8 +7,7 @@ import os
 
 import pandas as pd
 
-from .config import LEGISLATIVE_CORPUS_PATH, OUTPUT_DIR
-from .data_loader import load_legislative_triples, save_legislative_triples
+from .config import LEGISLATIVE_CORPUS_PATH, LEGISLATIVE_TRIPLES_PATH, OUTPUT_DIR
 
 TRIPLE_COLS = ["head", "relation", "tail", "law_id", "article_number"]
 
@@ -23,7 +22,16 @@ class LegislativeKnowledgeBase:
 
     def load(self):
         try:
-            self.triples_df = load_legislative_triples()
+            if not os.path.exists(LEGISLATIVE_TRIPLES_PATH):
+                print(f"Warning: File {LEGISLATIVE_TRIPLES_PATH} not found.")
+                self.triples_df = pd.DataFrame(columns=TRIPLE_COLS)
+                return
+
+            print(f"Loading triples from {LEGISLATIVE_TRIPLES_PATH}...")
+            self.triples_df = pd.read_csv(LEGISLATIVE_TRIPLES_PATH)
+            for col in ("head", "relation", "tail"):
+                if col not in self.triples_df.columns:
+                    raise ValueError("CSV must contain 'head', 'relation', and 'tail' columns")
             for col in ("law_id", "article_number"):
                 if col not in self.triples_df.columns:
                     self.triples_df[col] = pd.NA
@@ -60,7 +68,8 @@ class LegislativeKnowledgeBase:
         print(f"Added law '{law_id}' to corpus. Total laws: {len(self.corpus)}")
 
     def save(self):
-        save_legislative_triples(self.triples_df)
+        self.triples_df.to_csv(LEGISLATIVE_TRIPLES_PATH, index=False)
+        print(f"Saved {len(self.triples_df)} triples to {LEGISLATIVE_TRIPLES_PATH}")
 
         if self.corpus:
             corpus_df = pd.DataFrame(self.corpus, columns=["law_id", "law_text"])
@@ -145,7 +154,3 @@ class LegislativeKnowledgeBase:
 
     def get_all_triples(self):
         return self.triples_df.copy()
-
-
-def create_knowledge_base():
-    return LegislativeKnowledgeBase()

@@ -8,15 +8,10 @@ chunking and triple extraction:
   2. Cedilla -> comma-below diacritics (ş/ţ -> ș/ț)
   3. Strip the metadata header block (already captured in .meta.json)
   4. Normalize whitespace, preserve paragraph structure
-
-Usage (CLI):
-    python3 -m src.text_normalizer data/raw_laws/lege_24_2000.txt
 """
 
 import re
-import sys
 import unicodedata
-from pathlib import Path
 
 _DIACRITIC_MAP = str.maketrans(
     {
@@ -50,9 +45,7 @@ def _strip_header(text: str) -> str:
     """
     match = None
     for m in _HEADER_END_RE.finditer(text):
-        match = m  # take the last match in case "MONITORUL OFICIAL" reappears
-        # in body cross-references; the header one is always near the top, so
-        # finditer + last would be wrong. Use the FIRST match instead:
+        match = m
         break
     if match is None:
         return text
@@ -71,23 +64,3 @@ def normalize_ro(text: str) -> str:
     text = _TRAILING_WS_RE.sub("", text)
     text = _BLANK_RUN_RE.sub("\n\n", text)
     return text.strip()
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python3 -m src.text_normalizer <path-to-txt>", file=sys.stderr)
-        sys.exit(1)
-
-    path = Path(sys.argv[1])
-    raw = path.read_text(encoding="utf-8")
-    cleaned = normalize_ro(raw)
-
-    print("=" * 70)
-    print(f"BEFORE  ({len(raw)} chars, first 400)")
-    print("=" * 70)
-    print(raw[:400])
-    print()
-    print("=" * 70)
-    print(f"AFTER   ({len(cleaned)} chars, first 400)")
-    print("=" * 70)
-    print(cleaned[:400])

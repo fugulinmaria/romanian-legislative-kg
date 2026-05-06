@@ -247,31 +247,3 @@ Articolul 9: Parlamentul României are sediul în Palatul Parlamentului.
 Articolul 10: Ministerul Cercetării, Inovării și Digitalizării are sediul în București.
 Articolul 11: Prezenta lege intră în vigoare la 30 de zile de la publicare.
 """
-
-
-# Convenience function
-def generate_romanian_law(law_type="simple", topic=None):
-    """
-    Convenience function to generate a Romanian law.
-
-    Args:
-        law_type (str): Type of law ('simple', 'amendment', 'emergency', 'complex')
-        topic (str, optional): Law topic
-
-    Returns:
-        str: Generated legislative text
-    """
-    generator = RomanianLegislativeGenerator()
-
-    if law_type == "simple":
-        return generator.generate_simple_law(topic=topic)
-    elif law_type == "amendment":
-        return generator.generate_amendment_law()
-    elif law_type == "emergency":
-        return generator.generate_emergency_ordinance(topic=topic)
-    elif law_type == "complex":
-        return generator.generate_complex_law(topic=topic)
-    elif law_type == "sample":
-        return generator.get_predefined_sample()
-    else:
-        return generator.generate_simple_law(topic=topic)
