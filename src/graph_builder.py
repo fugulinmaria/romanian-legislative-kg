@@ -10,27 +10,37 @@ class KnowledgeGraphBuilder:
     """Builds and manages NetworkX graphs from triple data."""
 
     def __init__(self):
-        """Initialize the graph builder."""
         self.graph = None
 
     def build_from_dataframe(self, df, verbose=True):
-        """
-        Build a NetworkX MultiDiGraph from a DataFrame of triples.
+        """Build a MultiDiGraph from a triples DataFrame.
 
-        Args:
-            df (pd.DataFrame): DataFrame with columns ['head', 'relation', 'tail']
-            verbose (bool): Whether to print progress messages
-
-        Returns:
-            nx.MultiDiGraph: The constructed knowledge graph
+        If `law_id` / `article_number` columns are present, they are attached
+        as edge attributes for downstream provenance.
         """
         if verbose:
             print(f"Building NetworkX graph from {len(df):,} triples...")
 
         self.graph = nx.MultiDiGraph()
 
-        for _, row in df.iterrows():
-            self.graph.add_edge(str(row["head"]), str(row["tail"]), relation=str(row["relation"]))
+        edge_attrs = ["relation"]
+        for col in ("law_id", "article_number"):
+            if col in df.columns:
+                edge_attrs.append(col)
+
+        # Cast to str so node identities are stable.
+        edge_df = df.assign(
+            head=df["head"].astype(str),
+            tail=df["tail"].astype(str),
+        )
+
+        self.graph = nx.from_pandas_edgelist(
+            edge_df,
+            source="head",
+            target="tail",
+            edge_attr=edge_attrs,
+            create_using=nx.MultiDiGraph,
+        )
 
         if verbose:
             print(
@@ -41,12 +51,6 @@ class KnowledgeGraphBuilder:
         return self.graph
 
     def get_graph_stats(self):
-        """
-        Get basic statistics about the graph.
-
-        Returns:
-            dict: Dictionary containing graph statistics
-        """
         if self.graph is None:
             raise ValueError("Graph not built yet. Call build_from_dataframe first.")
 
@@ -58,12 +62,7 @@ class KnowledgeGraphBuilder:
         }
 
     def get_degree_distributions(self):
-        """
-        Get in-degree and out-degree distributions.
-
-        Returns:
-            tuple: (in_degrees, out_degrees) as lists
-        """
+        """Return (in_degrees, out_degrees, total_degrees)."""
         if self.graph is None:
             raise ValueError("Graph not built yet. Call build_from_dataframe first.")
 
@@ -74,17 +73,6 @@ class KnowledgeGraphBuilder:
         return in_degrees, out_degrees, total_degrees
 
 
-# Convenience function
 def build_graph_from_triples(df, verbose=True):
-    """
-    Convenience function to build a graph from triples DataFrame.
-
-    Args:
-        df (pd.DataFrame): DataFrame with columns ['head', 'relation', 'tail']
-        verbose (bool): Whether to print progress
-
-    Returns:
-        nx.MultiDiGraph: The constructed knowledge graph
-    """
     builder = KnowledgeGraphBuilder()
     return builder.build_from_dataframe(df, verbose=verbose)

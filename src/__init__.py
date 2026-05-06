@@ -9,6 +9,7 @@ from .config import *  # noqa: F403
 from .cross_reference_extractor import extract_cross_references
 from .data_loader import TripleDataLoader, load_legislative_triples, save_legislative_triples
 from .eda import KnowledgeGraphEDA
+from .entity_canonicalizer import canonicalize, canonicalize_entities
 from .graph_builder import KnowledgeGraphBuilder, build_graph_from_triples
 from .knowledge_base import LegislativeKnowledgeBase, create_knowledge_base
 from .law_loader import LawRecord, load_one, load_real_laws
@@ -22,6 +23,7 @@ from .llm_handler import (
     init_llm_models,
 )
 from .ontology import LegislativeOntologyReasoner
+from .pronoun_resolver import resolve_pronouns
 
 __version__ = "2.0.0"
 __author__ = "Maria"
@@ -60,4 +62,9 @@ __all__ = [
     "split_into_articles",
     # Cross-reference extractor
     "extract_cross_references",
+    # Pronoun resolver
+    "resolve_pronouns",
+    # Entity canonicalizer
+    "canonicalize",
+    "canonicalize_entities",
 ]

@@ -69,40 +69,93 @@ _VERB_TRIGGERS = [
 _TRIGGER_WINDOW = 80
 
 
-def _find_relation_for_span(text: str, span_start: int) -> str | None:
-    """Find the closest preceding trigger verb within the window."""
-    window_start = max(0, span_start - _TRIGGER_WINDOW)
-    window = text[window_start:span_start]
-    best_rel: str | None = None
+def _best_trigger(window: str) -> tuple[int, str | None]:
+    """Return (position-of-rightmost-trigger, canonical) within `window`.
+
+    Position is the trigger's start index inside the window; -1 if not found.
+    """
     best_pos = -1
+    best_rel: str | None = None
     for pattern, canonical in _VERB_TRIGGERS:
         for m in pattern.finditer(window):
             if m.start() > best_pos:
                 best_pos = m.start()
                 best_rel = canonical
-    return best_rel
+    return best_pos, best_rel
+
+
+def _find_relation_for_span(text: str, span_start: int, span_end: int) -> str | None:
+    """Find the trigger verb closest to the citation in either direction."""
+    # Left window: text[L:span_start] -> rightmost trigger is closest.
+    left_lo = max(0, span_start - _TRIGGER_WINDOW)
+    left_window = text[left_lo:span_start]
+    left_pos, left_rel = _best_trigger(left_window)
+    left_dist = (len(left_window) - left_pos) if left_pos >= 0 else None
+
+    # Right window: text[span_end:R]. We want the LEFTMOST trigger here (closest
+    # to the citation), and only if no other act citation appears before it.
+    right_hi = min(len(text), span_end + _TRIGGER_WINDOW)
+    right_window = text[span_end:right_hi]
+    right_pos, right_rel = -1, None
+    for pattern, canonical in _VERB_TRIGGERS:
+        m = pattern.search(right_window)
+        if m and (right_pos == -1 or m.start() < right_pos):
+            right_pos, right_rel = m.start(), canonical
+    if right_pos >= 0:
+        next_act = _ACT_PATTERN.search(right_window)
+        if next_act and next_act.start() < right_pos:
+            right_pos, right_rel = -1, None
+    right_dist = right_pos if right_pos >= 0 else None
+
+    # Pick the closer side; left wins on ties.
+    if left_dist is None and right_dist is None:
+        return None
+    if right_dist is None:
+        return left_rel
+    if left_dist is None:
+        return right_rel
+    return left_rel if left_dist <= right_dist else right_rel
+
+
+# Maps law_id tip prefix -> set of tokens that may appear in a citation.
+_TIP_TOKENS: dict[str, tuple[str, ...]] = {
+    "lege": ("leg",),  # Legea, Legii, Lege-cadru
+    "oug": ("o.u.g", "oug", "ordonanț"),  # Ordonanța de urgență / O.U.G.
+    "og": ("o.g", "ordonanț"),
+    "hg": ("h.g", "hotărâr"),
+    "decret": ("decret",),
+}
+
+
+def _is_self_citation(law_id: str, cited: str) -> bool:
+    """Return True if `cited` refers to the law identified by `law_id`."""
+    if not law_id:
+        return False
+    parts = law_id.split("_")
+    if len(parts) < 3:
+        return False
+    tip, numar, an = parts[0].lower(), parts[-2], parts[-1]
+
+    cited_low = cited.lower()
+    cited_num = re.sub(r"[.\s]", "", cited_low)
+    if f"{numar}/{an}" not in cited_num:
+        return False
+
+    expected = _TIP_TOKENS.get(tip, (tip,))
+    return any(tok in cited_low for tok in expected)
 
 
 def extract_cross_references(text: str, current_law_id: str) -> pd.DataFrame:
-    """Extract triples for all cited acts in ``text``.
-
-    Args:
-        text: Article body (already normalized).
-        current_law_id: ID of the law the text belongs to (used as triple head).
-
-    Returns:
-        DataFrame with columns ``head``, ``relation``, ``tail``. May be empty.
-    """
+    """Extract triples for all cited acts in ``text``."""
     triples: list[list[str]] = []
     seen: set[tuple[str, str, str]] = set()
 
     for m in _ACT_PATTERN.finditer(text):
         cited = re.sub(r"\s+", " ", m.group(0)).strip()
-        # Skip self-references (a law citing itself)
-        if current_law_id and current_law_id.replace("_", " ") in cited.lower():
+        if _is_self_citation(current_law_id, cited):
             continue
 
-        relation = _find_relation_for_span(text, m.start()) or "face_referire_la"
+        relation = _find_relation_for_span(text, m.start(), m.end()) or "face_referire_la"
         triple = (current_law_id, relation, cited)
         if triple in seen:
             continue

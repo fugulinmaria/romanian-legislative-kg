@@ -3,6 +3,8 @@ Romanian Legislative Ontological Reasoning.
 Applies OWL/SWRL-like logical axioms specific to Romanian legislative knowledge graphs.
 """
 
+import pandas as pd
+
 from .config import (
     LEGISLATIVE_ASYMMETRIC_RELATIONS,
     LEGISLATIVE_CONSTRAINTS,
@@ -14,31 +16,30 @@ from .config import (
 
 
 class LegislativeOntologyReasoner:
-    """
-    Comprehensive ontology reasoner for Romanian legislative knowledge graphs.
-    Applies domain-specific logical rules and constraints.
-    """
+    """Ontology reasoner for Romanian legislative knowledge graphs."""
 
     def __init__(self, df):
-        """
-        Initialize legislative ontology reasoner.
-
-        Args:
-            df (pd.DataFrame): DataFrame with columns ['head', 'relation', 'tail']
-        """
         self.df = df
         self.total_triples = len(df)
+        self._has_provenance = "law_id" in df.columns and "article_number" in df.columns
 
         print("\n" + "=" * 70)
         print(" ROMANIAN LEGISLATIVE ONTOLOGICAL REASONING")
         print("=" * 70)
         print(f"Analyzing {self.total_triples:,} legislative triples...")
 
+    def _provenance(self, row) -> str:
+        """Return ' (lege_X / art Y)' if provenance is available, else ''."""
+        if not self._has_provenance:
+            return ""
+        law = row.get("law_id")
+        art = row.get("article_number")
+        if pd.isna(law):
+            return ""
+        return f" ({law} / art {art})" if not pd.isna(art) else f" ({law})"
+
     def verify_functional_properties(self):
-        """
-        Functional Property: A law can have at most ONE value for certain properties.
-        Example: A law can only be issued by ONE primary authority.
-        """
+        """Functional: a head can have at most one tail per such relation."""
         print("\n[Axiom 1] Functional Properties")
         print(f"Properties: {LEGISLATIVE_FUNCTIONAL_RELATIONS}")
 
@@ -63,10 +64,7 @@ class LegislativeOntologyReasoner:
                 print(f"        {examples['tail'].tolist()}")
 
     def verify_asymmetric_properties(self):
-        """
-        Asymmetric Property: If Law A modifies Law B, then Law B cannot modify Law A.
-        This prevents circular modifications.
-        """
+        """Asymmetric: if (A,r,B) holds, (B,r,A) must not."""
         print("\n[Axiom 2] Asymmetric Properties")
         print(f"Properties: {LEGISLATIVE_ASYMMETRIC_RELATIONS}")
 
@@ -94,10 +92,7 @@ class LegislativeOntologyReasoner:
                 print(f"     '{v[0]}' ↔ '{v[1]}' (via '{v[2]}')")
 
     def verify_irreflexive_properties(self):
-        """
-        Irreflexive Property: A law cannot have certain relationships with itself.
-        Example: A law cannot modify itself or be issued by itself.
-        """
+        """Irreflexive: head must differ from tail."""
         print("\n[Axiom 3] Irreflexive Properties (No Self-Loops)")
         print(f"Properties: {LEGISLATIVE_IRREFLEXIVE_RELATIONS}")
 
@@ -114,13 +109,13 @@ class LegislativeOntologyReasoner:
         else:
             print(f"  ❌ Violations: {len(violations)} self-referential triples:")
             for _, row in violations.head(5).iterrows():
-                print(f"     '{row['head']}' --[{row['relation']}]--> itself")
+                print(
+                    f"     '{row['head']}' --[{row['relation']}]--> itself"
+                    f"{self._provenance(row)}"
+                )
 
     def verify_symmetric_properties(self):
-        """
-        Symmetric Property: If Ministry A collaborates with Ministry B,
-        then Ministry B should collaborate with Ministry A.
-        """
+        """Symmetric: every (A,r,B) requires its reciprocal (B,r,A)."""
         print("\n[Axiom 4] Symmetric Properties")
         print(f"Properties: {LEGISLATIVE_SYMMETRIC_RELATIONS}")
 
@@ -147,10 +142,7 @@ class LegislativeOntologyReasoner:
                 print(f"     '{mr[0]}' --[{mr[2]}]--> '{mr[1]}' (missing reverse)")
 
     def verify_domain_constraints(self):
-        """
-        Domain Constraints: Verify that only specific entities can perform certain actions.
-        Example: Only Parliament or Government can emit laws.
-        """
+        """Domain constraints: tail must be in the allowed list per relation."""
         print("\n[Axiom 5] Domain Constraints")
 
         all_valid = True
@@ -178,10 +170,7 @@ class LegislativeOntologyReasoner:
             print("  ✅ All domain constraints satisfied.")
 
     def verify_transitive_closure(self):
-        """
-        Transitive Properties: If A modifies B and B modifies C,
-        then there's an indirect modification chain from A to C.
-        """
+        """Transitive: enumerate 2-hop chains A→B→C for transitive relations."""
         print("\n[Axiom 6] Transitive Property Analysis")
         print(f"Properties: {LEGISLATIVE_TRANSITIVE_RELATIONS}")
 

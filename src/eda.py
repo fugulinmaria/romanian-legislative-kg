@@ -13,18 +13,10 @@ class KnowledgeGraphEDA:
     """Performs exploratory data analysis on knowledge graphs."""
 
     def __init__(self, df, graph=None):
-        """
-        Initialize EDA analyzer.
-
-        Args:
-            df (pd.DataFrame): DataFrame with columns ['head', 'relation', 'tail']
-            graph (nx.MultiDiGraph, optional): NetworkX graph
-        """
         self.df = df
         self.graph = graph
 
     def print_basic_stats(self):
-        """Print basic dataset statistics."""
         print("\n" + "=" * 60)
         print(" DATASET STATISTICS")
         print("=" * 60)
@@ -70,12 +62,6 @@ class KnowledgeGraphEDA:
         print(f"Graph Reciprocity: {reciprocity * 100:.4f}%")
 
     def print_relational_distribution(self, top_n=10):
-        """
-        Print relationship type distribution.
-
-        Args:
-            top_n (int): Number of top/bottom relations to show
-        """
         print("\n" + "=" * 60)
         print(" RELATIONAL DISTRIBUTION")
         print("=" * 60)
@@ -90,12 +76,6 @@ class KnowledgeGraphEDA:
         print(relation_counts.tail(top_n))
 
     def print_top_entities(self, top_n=5):
-        """
-        Print most referenced entities.
-
-        Args:
-            top_n (int): Number of top entities to show
-        """
         print(f"\nTop {top_n} Most Referenced Entities (As Subject):")
         print(self.df["head"].value_counts().head(top_n))
 
@@ -103,13 +83,6 @@ class KnowledgeGraphEDA:
         print(self.df["tail"].value_counts().head(top_n))
 
     def plot_relational_distribution(self, top_n=15, filename="relation_distribution"):
-        """
-        Plot bar chart of relationship type distribution.
-
-        Args:
-            top_n (int): Number of top relations to plot
-            filename (str): Output filename (without extension)
-        """
         print(f"\nPlotting relational distribution (Top {top_n})...")
 
         relation_counts = self.df["relation"].value_counts().head(top_n)
@@ -130,12 +103,6 @@ class KnowledgeGraphEDA:
         print(f"Saved plot to '{output_path}'")
 
     def plot_degree_distribution(self, filename="degree_distribution"):
-        """
-        Plot node degree distribution.
-
-        Args:
-            filename (str): Output filename (without extension)
-        """
         if self.graph is None:
             print("\nWarning: No graph provided. Cannot plot degree distribution.")
             return
@@ -163,12 +130,6 @@ class KnowledgeGraphEDA:
         print(f"Saved plot to '{output_path}'")
 
     def plot_in_out_degree_distribution(self, filename="in_out_degree_distribution"):
-        """
-        Plot separate in-degree and out-degree distributions.
-
-        Args:
-            filename (str): Output filename (without extension)
-        """
         if self.graph is None:
             print("\nWarning: No graph provided. Cannot plot degree distribution.")
             return
@@ -211,20 +172,12 @@ class KnowledgeGraphEDA:
         print(f"Saved plot to '{output_path}'")
 
     def plot_knowledge_graph_sample(self, max_nodes=50, filename="knowledge_graph_visualization"):
-        """
-        Plot a sample visualization of the knowledge graph.
-
-        Args:
-            max_nodes (int): Maximum number of nodes to visualize
-            filename (str): Output filename (without extension)
-        """
         if self.graph is None:
             print("\nWarning: No graph provided. Cannot visualize graph.")
             return
 
         print(f"\nGenerating graph visualization (max {max_nodes} nodes)...")
 
-        # Create subgraph if too large
         if self.graph.number_of_nodes() > max_nodes:
             nodes = list(self.graph.nodes())[:max_nodes]
             subgraph = self.graph.subgraph(nodes)
@@ -261,7 +214,6 @@ class KnowledgeGraphEDA:
         print(f"Saved visualization to '{output_path}'")
 
     def run_full_eda(self):
-        """Run complete EDA analysis with all visualizations."""
         self.print_basic_stats()
         self.print_graph_metrics()
         self.print_relational_distribution()

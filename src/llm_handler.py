@@ -3,6 +3,8 @@ LLM Integration for Knowledge Graph Triple Extraction.
 Manages Ollama models and provides utilities for extracting triples from text.
 """
 
+import sys
+
 import pandas as pd
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
@@ -22,14 +24,6 @@ class LLMHandler:
     """Handles initialization and interaction with Ollama LLM models."""
 
     def __init__(self, model=LLM_MODEL, temperature=LLM_TEMPERATURE, verbose=True):
-        """
-        Initialize LLM handler.
-
-        Args:
-            model (str): Ollama model name
-            temperature (float): Temperature for generation
-            verbose (bool): Whether to print initialization messages
-        """
         if verbose:
             print(f"Initializing LLM: {model} (temperature={temperature})...")
 
@@ -38,42 +32,35 @@ class LLMHandler:
         self.llm = OllamaLLM(model=model, temperature=temperature, timeout=120)
 
     def invoke(self, prompt_text):
-        """
-        Invoke the LLM with a prompt.
-
-        Args:
-            prompt_text (str): The prompt to send to the LLM
-
-        Returns:
-            str: LLM response
-        """
         return self.llm.invoke(prompt_text)
 
     def create_chain(self, template):
-        """
-        Create a LangChain chain with a prompt template.
-
-        Args:
-            template (str): Prompt template string
-
-        Returns:
-            Chain: LangChain chain object
-        """
+        """Build a `prompt | llm` chain from a template string."""
         prompt = PromptTemplate.from_template(template)
         return prompt | self.llm
+
+    def health_check(self, exit_on_failure: bool = True) -> bool:
+        """Ping the Ollama server. Print guidance and exit on failure."""
+        try:
+            self.llm.invoke("ping")
+            print(f"[OK] Ollama LLM '{self.model_name}' is reachable.")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[FAIL] Cannot reach Ollama LLM '{self.model_name}': {exc}\n"
+                f"  Start the server:    ollama serve\n"
+                f"  Pull the model:      ollama pull {self.model_name}",
+                file=sys.stderr,
+            )
+            if exit_on_failure:
+                sys.exit(1)
+            return False
 
 
 class EmbeddingsHandler:
     """Handles initialization and interaction with embeddings models."""
 
     def __init__(self, model=EMBEDDING_MODEL, verbose=True):
-        """
-        Initialize embeddings handler.
-
-        Args:
-            model (str): Ollama embeddings model name
-            verbose (bool): Whether to print initialization messages
-        """
         if verbose:
             print(f"Initializing embeddings model: {model}...")
 
@@ -81,21 +68,30 @@ class EmbeddingsHandler:
         self.embeddings = OllamaEmbeddings(model=model)
 
     def get_embeddings(self):
-        """Get the embeddings function."""
         return self.embeddings
+
+    def health_check(self, exit_on_failure: bool = True) -> bool:
+        """Ping the embeddings model. Print guidance and exit on failure."""
+        try:
+            self.embeddings.embed_query("ping")
+            print(f"[OK] Ollama embeddings '{self.model_name}' is reachable.")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[FAIL] Cannot reach Ollama embeddings '{self.model_name}': {exc}\n"
+                f"  Start the server:    ollama serve\n"
+                f"  Pull the model:      ollama pull {self.model_name}",
+                file=sys.stderr,
+            )
+            if exit_on_failure:
+                sys.exit(1)
+            return False
 
 
 class VectorStoreHandler:
     """Handles Chroma vector store initialization."""
 
     def __init__(self, embeddings_handler=None, verbose=True):
-        """
-        Initialize vector store handler.
-
-        Args:
-            embeddings_handler (EmbeddingsHandler, optional): Embeddings handler
-            verbose (bool): Whether to print initialization messages
-        """
         if embeddings_handler is None:
             embeddings_handler = EmbeddingsHandler(verbose=verbose)
 
@@ -109,7 +105,6 @@ class VectorStoreHandler:
         )
 
     def get_store(self):
-        """Get the vector store."""
         return self.vector_store
 
 
@@ -117,27 +112,12 @@ class TripleExtractor:
     """Extracts knowledge graph triples from text using LLM."""
 
     def __init__(self, llm_handler=None):
-        """
-        Initialize triple extractor.
-
-        Args:
-            llm_handler (LLMHandler, optional): LLM handler instance
-        """
         if llm_handler is None:
             self.llm_handler = LLMHandler(temperature=LLM_TEMPERATURE_EXTRACTION)
         else:
             self.llm_handler = llm_handler
 
     def extract_from_english_text(self, text):
-        """
-        Extract triples from English text.
-
-        Args:
-            text (str): Input text
-
-        Returns:
-            str: Raw LLM response with extracted triples
-        """
         template = """Extract entities and relations as a list of triplets: [Entity1, Relation, Entity2].
 
 Text: {text}
@@ -147,23 +127,53 @@ Triplets:"""
         chain = self.llm_handler.create_chain(template)
         return chain.invoke({"text": text})
 
+    MAX_LLM_CHARS = 4000
+    LLM_OVERLAP = 200
+
+    @staticmethod
+    def _chunk_for_llm(
+        text: str, max_chars: int = MAX_LLM_CHARS, overlap: int = LLM_OVERLAP
+    ) -> list[str]:
+        """Split text into windows for LLM processing, with optional overlap."""
+
+        if len(text) <= max_chars:
+            return [text]
+
+        paragraphs = text.split("\n\n")
+        windows: list[str] = []
+        buf = ""
+        for para in paragraphs:
+            if len(para) > max_chars:
+                if buf:
+                    windows.append(buf)
+                    buf = ""
+                start = 0
+                while start < len(para):
+                    end = min(start + max_chars, len(para))
+                    windows.append(para[start:end])
+                    if end == len(para):
+                        break
+                    start = end - overlap
+                continue
+
+            candidate = f"{buf}\n\n{para}" if buf else para
+            if len(candidate) <= max_chars:
+                buf = candidate
+            else:
+                if buf:
+                    windows.append(buf)
+                buf = para
+        if buf:
+            windows.append(buf)
+        return windows
+
     def extract_from_romanian_text(self, text):
-        """
-        Extract triples from Romanian legislative text.
-
-        Args:
-            text (str): Input Romanian text
-
-        Returns:
-            pd.DataFrame: DataFrame with columns ['head', 'relation', 'tail']
-        """
+        """Extract canonical-vocabulary triples from a Romanian article."""
         from .relation_vocabulary import prompt_vocabulary_block
 
-        # Truncate long articles — the LLM only needs the first ~2 000 chars to
-        # find canonical relations; the regex pre-pass already handled citations.
-        MAX_LLM_CHARS = 2000
-        if len(text) > MAX_LLM_CHARS:
-            text = text[:MAX_LLM_CHARS]
+        windows = self._chunk_for_llm(text)
+        if len(windows) > 1:
+            print(f"  [INFO] Article split into {len(windows)} LLM windows " f"({len(text)} chars)")
 
         template = """Ești un sistem expert de extragere a informațiilor din texte legislative românești.
 
@@ -196,16 +206,28 @@ Text: {text}
 Triplete:"""
 
         chain = self.llm_handler.create_chain(template)
-        response = chain.invoke({"text": text, "vocab": prompt_vocabulary_block()})
+        vocab = prompt_vocabulary_block()
 
-        print(f"LLM Response preview: {response[:300]}...")
+        all_triples: list[list[str]] = []
+        for i, window in enumerate(windows, 1):
+            response = chain.invoke({"text": window, "vocab": vocab})
+            if len(windows) > 1:
+                print(
+                    f"    [window {i}/{len(windows)}] response preview: "
+                    f"{response[:120].strip()}..."
+                )
+            else:
+                print(f"LLM Response preview: {response[:300]}...")
 
-        triples = self._parse_triple_response(response)
+            triples = self._parse_triple_response(response)
+            if not triples and len(windows) == 1:
+                print(f"[WARN] No triples parsed from response. Full response:\n{response}")
+            all_triples.extend(triples)
 
-        if not triples:
-            print(f"[WARN] No triples parsed from response. Full response:\n{response}")
-
-        return pd.DataFrame(triples, columns=["head", "relation", "tail"])
+        df = pd.DataFrame(all_triples, columns=["head", "relation", "tail"])
+        if not df.empty:
+            df = df.drop_duplicates(subset=["head", "relation", "tail"], ignore_index=True)
+        return df
 
     def _parse_triple_response(self, response):
         """Parse LLM response into structured triples.
@@ -271,12 +293,6 @@ class KnowledgeGraphEvaluator:
     """Evaluates LLM extraction performance on knowledge graph data."""
 
     def __init__(self, llm_handler=None):
-        """
-        Initialize evaluator.
-
-        Args:
-            llm_handler (LLMHandler, optional): LLM handler instance
-        """
         if llm_handler is None:
             self.llm_handler = LLMHandler()
         else:
@@ -285,16 +301,7 @@ class KnowledgeGraphEvaluator:
         self.extractor = TripleExtractor(llm_handler=self.llm_handler)
 
     def evaluate_on_samples(self, df, sample_size=3):
-        """
-        Evaluate LLM extraction on random samples from dataset.
-
-        Args:
-            df (pd.DataFrame): Dataset with triples
-            sample_size (int): Number of samples to test
-
-        Returns:
-            list: List of (input, ground_truth, prediction) tuples
-        """
+        """Run the extractor on `sample_size` random rows and print results."""
         print("\n" + "=" * 60)
         print(f" LLM EXTRACTION EVALUATION ({sample_size} samples)")
         print("=" * 60)
@@ -324,15 +331,7 @@ class KnowledgeGraphEvaluator:
 
 # Convenience functions for initialization
 def init_llm_models(verbose=True):
-    """
-    Initialize all LLM models and services.
-
-    Args:
-        verbose (bool): Whether to print initialization messages
-
-    Returns:
-        dict: Dictionary with 'llm', 'embeddings', and 'vector_store'
-    """
+    """Initialize LLM, embeddings and vector store; return them in a dict."""
     if verbose:
         print("Initializing local models (this may take a moment)...")
 

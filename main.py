@@ -3,6 +3,10 @@ Romanian Legislative Knowledge Graph Analysis Pipeline
 Main script for generating, extracting, storing, and reasoning over Romanian legislative knowledge.
 """
 
+import argparse
+import os
+import shutil
+
 import pandas as pd
 
 from src import (
@@ -15,11 +19,19 @@ from src import (
     TripleExtractor,
     VectorStoreHandler,
     build_graph_from_triples,
+    canonicalize_entities,
     extract_cross_references,
     load_real_laws,
+    resolve_pronouns,
     split_into_articles,
 )
-from src.config import LLM_TEMPERATURE_EXTRACTION
+from src.config import (
+    CHROMA_DB_PATH,
+    EMBEDDING_MODEL,
+    LLM_MODEL,
+    LLM_TEMPERATURE_EXTRACTION,
+    OUTPUT_DIR,
+)
 
 # ----------------------------------------------------------------------------
 # Pipeline flags
@@ -27,6 +39,25 @@ from src.config import LLM_TEMPERATURE_EXTRACTION
 USE_REAL_LAWS = True  # False -> use synthetic generator (legacy mode)
 MAX_LAWS = None  # int or None; cap for fast smoke tests (e.g. 2)
 MAX_ARTICLES_PER_LAW = None  # int or None; cap chunks per law during dev
+
+
+_FRESH_TARGETS = [
+    os.path.join(OUTPUT_DIR, "legislative_triples.csv"),
+    os.path.join(OUTPUT_DIR, "legislative_corpus.csv"),
+    os.path.join(OUTPUT_DIR, "knowledge_base_export.csv"),
+]
+
+
+def _wipe_outputs() -> None:
+    """Remove persisted CSVs and the Chroma DB so the run starts clean."""
+    print("[--fresh] Wiping previous outputs...")
+    for path in _FRESH_TARGETS:
+        if os.path.isfile(path):
+            os.remove(path)
+            print(f"  removed {path}")
+    if os.path.isdir(CHROMA_DB_PATH):
+        shutil.rmtree(CHROMA_DB_PATH)
+        print(f"  removed {CHROMA_DB_PATH}/")
 
 
 def _load_input_laws(generator):
@@ -47,6 +78,64 @@ def _load_input_laws(generator):
 
 def main():
     """Main execution pipeline for Romanian legislative knowledge graph analysis."""
+    global USE_REAL_LAWS, MAX_LAWS, MAX_ARTICLES_PER_LAW
+
+    parser = argparse.ArgumentParser(description="Romanian Legislative Knowledge Graph pipeline.")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Wipe output/ CSVs and the Chroma DB before running.",
+    )
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Use the synthetic legislative generator instead of real laws.",
+    )
+    parser.add_argument(
+        "--max-laws",
+        type=int,
+        default=MAX_LAWS,
+        help="Cap the number of input laws (smoke-test mode).",
+    )
+    parser.add_argument(
+        "--max-articles",
+        type=int,
+        default=MAX_ARTICLES_PER_LAW,
+        help="Cap the number of articles per law.",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default=LLM_MODEL,
+        help=f"Ollama LLM model name (default: {LLM_MODEL}).",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default=EMBEDDING_MODEL,
+        help=f"Ollama embedding model name (default: {EMBEDDING_MODEL}).",
+    )
+    parser.add_argument(
+        "--llm-window",
+        type=int,
+        default=TripleExtractor.MAX_LLM_CHARS,
+        help="Character cap per LLM extraction window.",
+    )
+    parser.add_argument(
+        "--llm-overlap",
+        type=int,
+        default=TripleExtractor.LLM_OVERLAP,
+        help="Overlap (chars) between LLM extraction windows.",
+    )
+    args = parser.parse_args()
+
+    # Apply CLI overrides
+    USE_REAL_LAWS = not args.synthetic
+    MAX_LAWS = args.max_laws
+    MAX_ARTICLES_PER_LAW = args.max_articles
+    TripleExtractor.MAX_LLM_CHARS = args.llm_window
+    TripleExtractor.LLM_OVERLAP = args.llm_overlap
+
+    if args.fresh:
+        _wipe_outputs()
 
     print("\n" + "=" * 80)
     print(" ROMANIAN LEGISLATIVE KNOWLEDGE GRAPH ANALYSIS PIPELINE")
@@ -60,12 +149,18 @@ def main():
     print(" STEP 1: INITIALIZATION")
     print("-" * 80)
 
-    llm_handler = LLMHandler(temperature=LLM_TEMPERATURE_EXTRACTION, verbose=True)
+    llm_handler = LLMHandler(
+        model=args.llm_model,
+        temperature=LLM_TEMPERATURE_EXTRACTION,
+        verbose=True,
+    )
+    llm_handler.health_check()
     extractor = TripleExtractor(llm_handler=llm_handler)
     generator = None if USE_REAL_LAWS else RomanianLegislativeGenerator()
     kb = LegislativeKnowledgeBase()
 
-    embeddings_handler = EmbeddingsHandler(verbose=True)
+    embeddings_handler = EmbeddingsHandler(model=args.embedding_model, verbose=True)
+    embeddings_handler.health_check()
     vector_store_handler = VectorStoreHandler(embeddings_handler=embeddings_handler, verbose=True)
     vector_store = vector_store_handler.get_store()
 
@@ -121,17 +216,17 @@ def main():
             # 3. Merge + dedupe (regex wins on conflicts because it's deterministic)
             merged = pd.concat([regex_triples, llm_triples], ignore_index=True)
             if not merged.empty:
-                # Normalise pronoun heads produced by the LLM ("prezenta lege",
-                # "prezenta hotărâre", "prezentul cod", bare "Hotărârea" etc.)
-                # to the canonical law_id so dedup works across sources.
-                _pronoun_pattern = r"^(prezent[au][l ]?\w*|hotărârea|legea|ordonanța|codul)$"
-                pronoun_mask = merged["head"].str.match(_pronoun_pattern, case=False, na=False)
-                merged.loc[pronoun_mask, "head"] = law_id
+                # Rewrite anaphora ("prezenta lege", "hotărârea", "codul ...")
+                # on both head and tail to the canonical law_id.
+                merged = resolve_pronouns(merged, law_id)
+                # Canonicalize surface forms (case, whitespace, diacritics)
+                # so variants collapse to one graph node.
+                merged = canonicalize_entities(merged)
 
                 merged = merged.drop_duplicates(subset=["head", "relation", "tail"])
                 merged = merged.assign(law_id=law_id, article_number=art_num)
                 all_triples.append(merged)
-                kb.add_triples(merged.drop(columns=["law_id", "article_number"]))
+                kb.add_triples(merged)
                 law_triple_count += len(merged)
 
             # Index the article in the vector store with rich metadata
@@ -168,9 +263,6 @@ def main():
         print("\n[WARN] No triples were extracted from any document")
         return
 
-    # Drop the provenance columns for downstream graph building (keeps API stable)
-    triples_for_graph = combined_triples[["head", "relation", "tail"]]
-
     # ============================================================================
     # STEP 4: Build Knowledge Graph
     # ============================================================================
@@ -178,7 +270,7 @@ def main():
     print(" STEP 4: KNOWLEDGE GRAPH CONSTRUCTION")
     print("-" * 80)
 
-    G = build_graph_from_triples(triples_for_graph, verbose=True)
+    G = build_graph_from_triples(combined_triples, verbose=True)
 
     # ============================================================================
     # STEP 5: Exploratory Data Analysis
@@ -187,15 +279,15 @@ def main():
     print(" STEP 5: EXPLORATORY DATA ANALYSIS")
     print("-" * 80)
 
-    eda = KnowledgeGraphEDA(triples_for_graph, G)
+    eda = KnowledgeGraphEDA(combined_triples, G)
     eda.print_basic_stats()
     eda.print_graph_metrics()
     eda.print_relational_distribution(top_n=10)
 
-    if len(triples_for_graph) > 0:
+    if len(combined_triples) > 0:
         print("\nGenerating visualizations...")
         eda.plot_relational_distribution(
-            top_n=min(10, triples_for_graph["relation"].nunique()),
+            top_n=min(10, combined_triples["relation"].nunique()),
             filename="legislative_relation_distribution",
         )
         eda.plot_knowledge_graph_sample(max_nodes=50, filename="legislative_knowledge_graph")
@@ -207,7 +299,7 @@ def main():
     print(" STEP 6: ONTOLOGICAL REASONING")
     print("-" * 80)
 
-    reasoner = LegislativeOntologyReasoner(triples_for_graph)
+    reasoner = LegislativeOntologyReasoner(combined_triples)
     reasoner.run_all_tests()
 
     # ============================================================================
@@ -274,9 +366,6 @@ def main():
 
     kb.save()
     kb.export_to_csv()
-
-    # Save full triples with provenance (law_id + article_number) for validation
-    combined_triples.to_csv("output/legislative_triples.csv", index=False)
 
     # ============================================================================
     # PIPELINE COMPLETE
