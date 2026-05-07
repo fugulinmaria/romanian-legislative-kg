@@ -1,0 +1,17 @@
+{
+  "doc_id": "regulament_intern_acme_2025",
+  "title": "Regulament intern compliant cu Codul Muncii (lege_53_2003)",
+  "description": "Document sintetic VALID: respectă vocabularul închis si axiomele ontologice. Citeaza corect Codul Muncii, foloseste relatii functionale o singura data, fara self-loops, fara cicluri pe relatii asimetrice.",
+  "triples": [
+    {"head": "regulament_intern_acme_2025", "relation": "emis_de",          "tail": "ACME SRL",                       "article_number": "1"},
+    {"head": "regulament_intern_acme_2025", "relation": "publicat_în",      "tail": "Monitorul Oficial al României",  "article_number": "1"},
+    {"head": "regulament_intern_acme_2025", "relation": "face_referire_la", "tail": "lege_53_2003",                   "article_number": "2"},
+    {"head": "regulament_intern_acme_2025", "relation": "face_referire_la", "tail": "Legea nr. 53/2003",              "article_number": "2"},
+    {"head": "regulament_intern_acme_2025", "relation": "se_aplică",        "tail": "salariații ACME SRL",            "article_number": "3"},
+    {"head": "regulament_intern_acme_2025", "relation": "intră_în_vigoare", "tail": "1 ianuarie 2025",                "article_number": "4"},
+    {"head": "Director Resurse Umane",      "relation": "responsabil_pentru","tail": "aplicarea regulamentului",      "article_number": "5"},
+    {"head": "Director Resurse Umane",      "relation": "colaborează_cu",   "tail": "Departamentul Juridic",          "article_number": "5"},
+    {"head": "Departamentul Juridic",       "relation": "colaborează_cu",   "tail": "Director Resurse Umane",         "article_number": "5"},
+    {"head": "ACME SRL",                    "relation": "are_sediul_în",    "tail": "București",                      "article_number": "1"}
+  ]
+}

@@ -7,6 +7,7 @@ over Romanian legislative knowledge.
 from .article_splitter import split_into_articles
 from .config import *  # noqa: F403
 from .cross_reference_extractor import extract_cross_references
+from .document_graph import DocumentRecord, load_document
 from .eda import KnowledgeGraphEDA
 from .entity_canonicalizer import canonicalize, canonicalize_entities
 from .graph_builder import KnowledgeGraphBuilder, build_graph_from_triples
@@ -21,6 +22,7 @@ from .llm_handler import (
 )
 from .ontology import LegislativeOntologyReasoner
 from .pronoun_resolver import resolve_pronouns
+from .similarity import SimilarityReport, compare_to_ontology, count_axiom_violations
 
 __version__ = "2.0.0"
 __author__ = "Maria"
@@ -56,4 +58,10 @@ __all__ = [
     # Entity canonicalizer
     "canonicalize",
     "canonicalize_entities",
+    # Document subgraphs + similarity
+    "DocumentRecord",
+    "load_document",
+    "SimilarityReport",
+    "compare_to_ontology",
+    "count_axiom_violations",
 ]

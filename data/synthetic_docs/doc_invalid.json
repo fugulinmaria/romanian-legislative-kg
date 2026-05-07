@@ -1,0 +1,27 @@
+{
+  "doc_id": "regulament_intern_badcorp_2025",
+  "title": "Regulament intern NON-compliant",
+  "description": "Document sintetic INVALID: violeaza intentionat mai multe axiome ontologice si introduce o relatie in afara vocabularului inchis (va fi filtrata la canonicalizare).",
+  "violations_expected": [
+    "functional: doua emitenti pentru acelasi document (emis_de)",
+    "functional: doua locuri de publicare (publicat_în)",
+    "irreflexive: regulamentul se modifica pe sine (modifică self-loop)",
+    "asymmetric: doua acte se modifica reciproc (modifică ciclu)",
+    "symmetric: colaborează_cu fara reciproc",
+    "domain: emis_de cu o entitate care nu apartine domeniului permis",
+    "vocabulary: relatie inexistenta 'guverneaza'"
+  ],
+  "triples": [
+    {"head": "regulament_intern_badcorp_2025", "relation": "emis_de",          "tail": "BadCorp SRL",                     "article_number": "1"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "emis_de",          "tail": "Persoana Fizica X",               "article_number": "1"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "publicat_în",      "tail": "Monitorul Oficial al României",   "article_number": "1"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "publicat_în",      "tail": "ziarul local",                    "article_number": "1"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "modifică",         "tail": "regulament_intern_badcorp_2025",  "article_number": "2"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "modifică",         "tail": "anexa_a",                         "article_number": "3"},
+    {"head": "anexa_a",                        "relation": "modifică",         "tail": "regulament_intern_badcorp_2025",  "article_number": "3"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "face_referire_la", "tail": "lege_53_2003",                    "article_number": "4"},
+    {"head": "Sef Departament",                "relation": "colaborează_cu",   "tail": "Auditor Extern",                  "article_number": "5"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "guverneaza",       "tail": "salariatii",                      "article_number": "6"},
+    {"head": "regulament_intern_badcorp_2025", "relation": "se_aplică",        "tail": "salariații BadCorp SRL",          "article_number": "6"}
+  ]
+}
