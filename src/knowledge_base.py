@@ -55,11 +55,14 @@ class LegislativeKnowledgeBase:
         self.triples_df = pd.concat([self.triples_df, incoming], ignore_index=True)
 
         initial_count = len(self.triples_df)
-        self.triples_df = self.triples_df.drop_duplicates(subset=["head", "relation", "tail"])
+        self.triples_df = self.triples_df.drop_duplicates(subset=TRIPLE_COLS, ignore_index=True)
         duplicates_removed = initial_count - len(self.triples_df)
 
         if duplicates_removed > 0:
-            print(f"Removed {duplicates_removed} duplicate triples.")
+            print(
+                f"Removed {duplicates_removed} fully-duplicate triples "
+                "(same head/relation/tail AND same law_id/article_number)."
+            )
 
         print(f"Added triples. Total: {len(self.triples_df)}")
 
@@ -154,3 +157,25 @@ class LegislativeKnowledgeBase:
 
     def get_all_triples(self):
         return self.triples_df.copy()
+
+    def get_triple_sources(self, head, relation, tail):
+        """Return all (law_id, article_number) provenance records for a logical triple."""
+        mask = (
+            (self.triples_df["head"] == head)
+            & (self.triples_df["relation"] == relation)
+            & (self.triples_df["tail"] == tail)
+        )
+        return self.triples_df.loc[mask, ["law_id", "article_number"]].to_dict("records")
+
+    def get_triples_with_sources(self):
+        """Aggregate by logical triple (h, r, t) and return list of sources per triple."""
+        if self.triples_df.empty:
+            return pd.DataFrame(columns=["head", "relation", "tail", "sources", "n_sources"])
+
+        grouped = (
+            self.triples_df.groupby(["head", "relation", "tail"], dropna=False)
+            .apply(lambda g: g[["law_id", "article_number"]].to_dict("records"))
+            .reset_index(name="sources")
+        )
+        grouped["n_sources"] = grouped["sources"].apply(len)
+        return grouped

@@ -120,11 +120,14 @@ class TripleExtractor:
     MAX_LLM_CHARS = 4000
     LLM_OVERLAP = 200
 
-    @staticmethod
     def _chunk_for_llm(
-        text: str, max_chars: int = MAX_LLM_CHARS, overlap: int = LLM_OVERLAP
+        self, text: str, max_chars: int | None = None, overlap: int | None = None
     ) -> list[str]:
         """Split text into windows for LLM processing, with optional overlap."""
+        if max_chars is None:
+            max_chars = self.MAX_LLM_CHARS
+        if overlap is None:
+            overlap = self.LLM_OVERLAP
 
         if len(text) <= max_chars:
             return [text]
@@ -161,7 +164,7 @@ class TripleExtractor:
         """Extract canonical-vocabulary triples from a Romanian article."""
         from .relation_vocabulary import prompt_vocabulary_block
 
-        windows = self._chunk_for_llm(text)
+        windows = self._chunk_for_llm(text, max_chars=self.MAX_LLM_CHARS, overlap=self.LLM_OVERLAP)
         if len(windows) > 1:
             print(f"  [INFO] Article split into {len(windows)} LLM windows " f"({len(text)} chars)")
 
