@@ -3,7 +3,13 @@ Graph building and operations for Knowledge Graphs.
 Provides utilities for creating and analyzing NetworkX graphs from triple data.
 """
 
+import re
+
 import networkx as nx
+
+from .law_id_resolver import get_meta
+
+_LAW_ID_RE = re.compile(r"^[a-z]+(?:_\d+){2,}$")
 
 
 class KnowledgeGraphBuilder:
@@ -24,7 +30,7 @@ class KnowledgeGraphBuilder:
         self.graph = nx.MultiDiGraph()
 
         edge_attrs = ["relation"]
-        for col in ("law_id", "article_number"):
+        for col in ("law_id", "article_number", "source_method", "confidence"):
             if col in df.columns:
                 edge_attrs.append(col)
 
@@ -41,6 +47,8 @@ class KnowledgeGraphBuilder:
             edge_attr=edge_attrs,
             create_using=nx.MultiDiGraph,
         )
+
+        self._annotate_law_nodes()
 
         if verbose:
             print(
@@ -71,6 +79,20 @@ class KnowledgeGraphBuilder:
         total_degrees = [d for n, d in self.graph.degree()]
 
         return in_degrees, out_degrees, total_degrees
+
+    def _annotate_law_nodes(self):
+        """Attach node_type='law' and metadata to law_id nodes."""
+        for node in self.graph.nodes:
+            if not isinstance(node, str) or not _LAW_ID_RE.match(node):
+                continue
+            self.graph.nodes[node]["node_type"] = "law"
+            meta = get_meta(node)
+            if meta:
+                for k in ("tip_act", "numar", "an", "titlu", "in_force"):
+                    if k in meta:
+                        self.graph.nodes[node][k] = meta[k]
+            else:
+                self.graph.nodes[node]["external"] = True
 
 
 def build_graph_from_triples(df, verbose=True):

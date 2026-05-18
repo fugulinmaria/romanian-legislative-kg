@@ -9,7 +9,15 @@ import pandas as pd
 
 from .config import LEGISLATIVE_CORPUS_PATH, LEGISLATIVE_TRIPLES_PATH, OUTPUT_DIR
 
-TRIPLE_COLS = ["head", "relation", "tail", "law_id", "article_number"]
+TRIPLE_COLS = [
+    "head",
+    "relation",
+    "tail",
+    "law_id",
+    "article_number",
+    "source_method",
+    "confidence",
+]
 
 
 class LegislativeKnowledgeBase:
@@ -35,6 +43,9 @@ class LegislativeKnowledgeBase:
             for col in ("law_id", "article_number"):
                 if col not in self.triples_df.columns:
                     self.triples_df[col] = pd.NA
+            for col, default in (("source_method", pd.NA), ("confidence", pd.NA)):
+                if col not in self.triples_df.columns:
+                    self.triples_df[col] = default
             if not self.triples_df.empty:
                 print(f"Loaded {len(self.triples_df)} triples from knowledge base.")
         except Exception as e:
@@ -50,6 +61,9 @@ class LegislativeKnowledgeBase:
         for col in ("law_id", "article_number"):
             if col not in incoming.columns:
                 incoming[col] = pd.NA
+        for col, default in (("source_method", pd.NA), ("confidence", pd.NA)):
+            if col not in incoming.columns:
+                incoming[col] = default
         incoming = incoming[TRIPLE_COLS]
 
         self.triples_df = pd.concat([self.triples_df, incoming], ignore_index=True)
@@ -165,7 +179,9 @@ class LegislativeKnowledgeBase:
             & (self.triples_df["relation"] == relation)
             & (self.triples_df["tail"] == tail)
         )
-        return self.triples_df.loc[mask, ["law_id", "article_number"]].to_dict("records")
+        return self.triples_df.loc[
+            mask, ["law_id", "article_number", "source_method", "confidence"]
+        ].to_dict("records")
 
     def get_triples_with_sources(self):
         """Aggregate by logical triple (h, r, t) and return list of sources per triple."""
@@ -174,7 +190,11 @@ class LegislativeKnowledgeBase:
 
         grouped = (
             self.triples_df.groupby(["head", "relation", "tail"], dropna=False)
-            .apply(lambda g: g[["law_id", "article_number"]].to_dict("records"))
+            .apply(
+                lambda g: g[["law_id", "article_number", "source_method", "confidence"]].to_dict(
+                    "records"
+                )
+            )
             .reset_index(name="sources")
         )
         grouped["n_sources"] = grouped["sources"].apply(len)

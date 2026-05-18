@@ -18,6 +18,9 @@ import re
 
 import pandas as pd
 
+from .config import CONFIDENCE_REGEX
+from .law_id_resolver import resolve as resolve_law_id
+
 # ---------------------------------------------------------------------------
 # Citation patterns (Romanian legal forms, after diacritic normalization)
 # ---------------------------------------------------------------------------
@@ -54,15 +57,42 @@ _ACT_PATTERN = re.compile(
 
 # Trigger verbs that introduce relations to a cited act. The trigger group is
 # captured so we know which canonical relation to emit.
+# Patterns cover both verbal forms (modifică, completează) and noun+definite-article
+# forms (modificarea, completarea) common in Romanian legal preambles.
 _VERB_TRIGGERS = [
-    (re.compile(r"(?i)\b(modific(?:ă|are|at|ată))\b"), "modifică"),
-    (re.compile(r"(?i)\b(completeaz(?:ă|are|at|ată))\b"), "completează"),
-    (re.compile(r"(?i)\b(abrog(?:ă|are|at|ată))\b"), "abroga"),
-    (re.compile(r"(?i)\b(introduce|introduc(?:ere|e)?)\b"), "introduce"),
-    (re.compile(r"(?i)\b(republic(?:ă|at|ată|are))\b"), "republică"),
-    (re.compile(r"(?i)\b(aprob(?:ă|at|ată|are))\b"), "aprobă"),
-    (re.compile(r"(?i)\btranspun(?:e|ere|s|să)\b"), "transpune"),
+    (re.compile(r"(?i)\b(modific(?:ă|area|are|at|ată))\b"), "modifică"),
+    (re.compile(r"(?i)\b(complet(?:ează|area|are|at|ată))\b"), "completează"),
+    (re.compile(r"(?i)\b(abrog(?:ă|area|are|at|ată))\b"), "abroga"),
+    (re.compile(r"(?i)\b(introduc(?:erea|ere|e)?)\b"), "introduce"),
+    (re.compile(r"(?i)\b(republic(?:ă|area|are|at|ată))\b"), "republică"),
+    (re.compile(r"(?i)\b(aprob(?:ă|area|are|at|ată))\b"), "aprobă"),
+    (re.compile(r"(?i)\btranspun(?:e|erea|ere|s|să)\b"), "transpune"),
 ]
+
+# Shared stem alternatives used to build the compound-trigger pattern.
+_TRIGGER_NOUN_OR_VERB = (
+    r"modific(?:ă|area|are|at|ată)"
+    r"|complet(?:ează|area|are|at|ată)"
+    r"|abrog(?:ă|area|are|at|ată)"
+    r"|introduc(?:erea|ere|e)?"
+    r"|republic(?:ă|area|are|at|ată)"
+    r"|aprob(?:ă|area|are|at|ată)"
+    r"|transpun(?:e|erea|ere|s|să)"
+)
+
+# Detects conjunctive pairs like "modificarea și completarea" or
+# "modifică și completează", capturing each verb form as a group.
+_COMPOUND_TRIGGER = re.compile(
+    r"(?i)\b(" + _TRIGGER_NOUN_OR_VERB + r")\b\s+(?:și|sau)\s+\b(" + _TRIGGER_NOUN_OR_VERB + r")\b"
+)
+
+
+def _token_to_canonical(token: str) -> str | None:
+    for pattern, canonical in _VERB_TRIGGERS:
+        if pattern.search(token):
+            return canonical
+    return None
+
 
 # Maximum chars between a trigger verb and the act citation for them to be
 # considered related. Keeps us from linking distant unrelated mentions.
@@ -84,18 +114,31 @@ def _best_trigger(window: str) -> tuple[int, str | None]:
     return best_pos, best_rel
 
 
-def _find_relation_for_span(text: str, span_start: int, span_end: int) -> str | None:
-    """Find the trigger verb closest to the citation in either direction."""
+def _find_relation_for_span(text: str, span_start: int, span_end: int) -> list[str]:
+    """Return the list of canonical relations for the citation at [span_start, span_end).
+
+    Checks for a conjunctive compound expression (e.g. "modificarea și completarea")
+    first and returns both relations when found. Falls back to the single closest
+    trigger verb otherwise.
+    """
+    window_lo = max(0, span_start - _TRIGGER_WINDOW)
+    window_hi = min(len(text), span_end + _TRIGGER_WINDOW)
+    compound = _COMPOUND_TRIGGER.search(text[window_lo:window_hi])
+    if compound:
+        rel1 = _token_to_canonical(compound.group(1))
+        rel2 = _token_to_canonical(compound.group(2))
+        rels = list(dict.fromkeys(r for r in (rel1, rel2) if r))
+        if rels:
+            return rels
+
     # Left window: text[L:span_start] -> rightmost trigger is closest.
-    left_lo = max(0, span_start - _TRIGGER_WINDOW)
-    left_window = text[left_lo:span_start]
+    left_window = text[window_lo:span_start]
     left_pos, left_rel = _best_trigger(left_window)
     left_dist = (len(left_window) - left_pos) if left_pos >= 0 else None
 
     # Right window: text[span_end:R]. We want the LEFTMOST trigger here (closest
     # to the citation), and only if no other act citation appears before it.
-    right_hi = min(len(text), span_end + _TRIGGER_WINDOW)
-    right_window = text[span_end:right_hi]
+    right_window = text[span_end:window_hi]
     right_pos, right_rel = -1, None
     for pattern, canonical in _VERB_TRIGGERS:
         m = pattern.search(right_window)
@@ -109,12 +152,13 @@ def _find_relation_for_span(text: str, span_start: int, span_end: int) -> str | 
 
     # Pick the closer side; left wins on ties.
     if left_dist is None and right_dist is None:
-        return None
+        return []
     if right_dist is None:
-        return left_rel
+        return [left_rel] if left_rel else []
     if left_dist is None:
-        return right_rel
-    return left_rel if left_dist <= right_dist else right_rel
+        return [right_rel] if right_rel else []
+    rel = left_rel if left_dist <= right_dist else right_rel
+    return [rel] if rel else []
 
 
 # Maps law_id tip prefix -> set of tokens that may appear in a citation.
@@ -151,18 +195,27 @@ def extract_cross_references(text: str, current_law_id: str) -> pd.DataFrame:
     seen: set[tuple[str, str, str]] = set()
 
     for m in _ACT_PATTERN.finditer(text):
-        cited = re.sub(r"\s+", " ", m.group(0)).strip()
-        if _is_self_citation(current_law_id, cited):
+        surface = re.sub(r"\s+", " ", m.group(0)).strip()
+        cited = resolve_law_id(surface) or surface
+        if cited == current_law_id or _is_self_citation(current_law_id, surface):
             continue
 
-        relation = _find_relation_for_span(text, m.start(), m.end()) or "face_referire_la"
-        triple = (current_law_id, relation, cited)
-        if triple in seen:
-            continue
-        seen.add(triple)
-        triples.append(list(triple))
+        relations = _find_relation_for_span(text, m.start(), m.end()) or ["face_referire_la"]
+        for relation in relations:
+            triple = (current_law_id, relation, cited)
+            if triple in seen:
+                continue
+            seen.add(triple)
+            triples.append(list(triple))
 
-    return pd.DataFrame(triples, columns=["head", "relation", "tail"])
+    df = pd.DataFrame(triples, columns=["head", "relation", "tail"])
+    if not df.empty:
+        df["source_method"] = "regex"
+        df["confidence"] = CONFIDENCE_REGEX
+    else:
+        df["source_method"] = pd.Series(dtype="object")
+        df["confidence"] = pd.Series(dtype="float64")
+    return df
 
 
 if __name__ == "__main__":

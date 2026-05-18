@@ -12,6 +12,8 @@ EMBEDDING_MODEL = "nomic-embed-text"
 LLM_MODEL = "gemma2:9b"  # gemma2:9b, gemma2:27b, llama3.1:8b
 LLM_TEMPERATURE = 0.0
 LLM_TEMPERATURE_EXTRACTION = 0.1
+CONFIDENCE_REGEX = 1.0
+CONFIDENCE_LLM = 0.7
 
 # ==========================================
 # Paths Configuration

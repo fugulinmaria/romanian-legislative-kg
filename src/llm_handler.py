@@ -13,6 +13,7 @@ from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from .config import (
     CHROMA_COLLECTION_NAME,
     CHROMA_DB_PATH,
+    CONFIDENCE_LLM,
     EMBEDDING_MODEL,
     LLM_MODEL,
     LLM_TEMPERATURE,
@@ -220,6 +221,8 @@ Triplete:"""
         df = pd.DataFrame(all_triples, columns=["head", "relation", "tail"])
         if not df.empty:
             df = df.drop_duplicates(subset=["head", "relation", "tail"], ignore_index=True)
+            df["source_method"] = "llm"
+            df["confidence"] = CONFIDENCE_LLM
         return df
 
     def _parse_triple_response(self, response):

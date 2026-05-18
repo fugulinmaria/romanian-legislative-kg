@@ -92,6 +92,17 @@ def tier1_metrics(df: pd.DataFrame) -> None:
         for law_id, cnt in df.groupby("law_id").size().sort_values(ascending=False).items():
             print(f"  {law_id:<25} {cnt:>5}")
 
+    # Source method breakdown
+    if "source_method" in df.columns:
+        print("\nTriples by source_method:")
+        for method, cnt in df["source_method"].value_counts().items():
+            pct = 100 * cnt / len(df)
+            print(f"  {method:<10} {cnt:>5}  ({pct:.1f}%)")
+        if df["source_method"].isna().any():
+            print(f"  {'(missing)':<10} {df['source_method'].isna().sum():>5}")
+    else:
+        print("\n[WARN] Column 'source_method' missing — re-run main.py to regenerate triples")
+
 
 # ---------------------------------------------------------------------------
 # Tier 2 — Ontology violations

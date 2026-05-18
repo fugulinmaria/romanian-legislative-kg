@@ -14,6 +14,7 @@ import unicodedata
 
 import pandas as pd
 
+from .law_id_resolver import resolve as resolve_law_id
 from .text_normalizer import _DIACRITIC_MAP
 
 # Zero-width and NBSP characters to strip.
@@ -60,6 +61,11 @@ def canonicalize(value: str) -> str:
     # 3. Preserve law_id verbatim
     if _LAW_ID_RE.match(s):
         return s
+
+    # 3b. Collapse known citations / aliases to canonical law_id
+    lid = resolve_law_id(s)
+    if lid:
+        return lid
 
     # 4. Numbered citations: normalize spacing around 'nr.' / '/' but keep case
     #    of the head word (Legea / LEGEA both become 'Legea').

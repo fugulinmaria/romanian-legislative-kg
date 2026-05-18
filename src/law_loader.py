@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
+from .law_id_resolver import register_law
 from .text_normalizer import normalize_ro
 
 LawRecord = Tuple[str, str, dict]
@@ -52,6 +53,7 @@ def load_one(txt_path: str | Path) -> LawRecord:
     raw = txt_path.read_text(encoding="utf-8")
     text = normalize_ro(raw)
     meta = _read_meta(txt_path.with_suffix(".meta.json"), law_id)
+    register_law(meta)
     return law_id, text, meta
 
 

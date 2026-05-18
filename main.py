@@ -223,6 +223,8 @@ def main():
                 # so variants collapse to one graph node.
                 merged = canonicalize_entities(merged)
 
+                if "confidence" in merged.columns:
+                    merged = merged.sort_values("confidence", ascending=False)
                 merged = merged.drop_duplicates(subset=["head", "relation", "tail"])
                 merged = merged.assign(law_id=law_id, article_number=art_num)
                 all_triples.append(merged)
